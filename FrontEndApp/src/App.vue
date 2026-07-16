@@ -19,7 +19,7 @@ import { useNavBadgesStore } from './store/navBadgesStore';
 import { onBeforeMount, onBeforeUnmount, onMounted, ref, watch, h } from 'vue';
 import { useThemeStore } from './store/theme';
 import TitleBar from './components/TitleBar/TitleBar.vue';
-import Sermons from './Views/Sermons/Sermons.vue';
+import Grow from './Views/Grow/Grow.vue';
 import SESSION from './util/session';
 import FooterComponent from './components/Footer/Footer.vue';
 import { useMainStore } from './store/main';
@@ -193,10 +193,10 @@ onBeforeUnmount(() => {
                                         menuStore.menuSelected == 'read-bible'
                                     "
                                 />
-                                <Sermons
+                                <Grow
                                     v-show="
                                         menuStore.isRouter == false &&
-                                        menuStore.menuSelected == 'sermons'
+                                        menuStore.menuSelected == 'grow'
                                     "
                                 />
                                 <div class="h-[100%]" v-show="menuStore.isRouter == true">

@@ -111,11 +111,16 @@ function resetForm() {
     loading.value = false;
     isPublished.value = false;
 }
+
+function closeToSermons() {
+    menuStore.growInitialScreen = 'sermons';
+    menuStore.setMenu('grow');
+}
 </script>
 <template>
     <div class="h-[100%] w-[100%]">
         <div class="absolute top-5 right-5">
-            <NButton size="large" @click="menuStore.setMenu('sermons')" circle secondary>
+            <NButton size="large" @click="closeToSermons" circle secondary>
                 <template #icon>
                     <NIcon>
                         <Close />

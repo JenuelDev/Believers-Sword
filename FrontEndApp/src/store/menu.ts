@@ -6,12 +6,10 @@ import session from './../util/session';
 import { renderNIcon } from '../util/helper';
 import {
     Book24Filled,
-    DocumentQueueMultiple24Filled,
     Person24Filled,
     Settings24Filled,
     HeartCircle24Filled,
     Book24Regular,
-    DocumentQueueMultiple24Regular,
     Person24Regular,
     HeartCircle24Regular,
     Settings24Regular,
@@ -21,6 +19,8 @@ import {
     Sparkle24Filled,
     Games24Regular,
     Games24Filled,
+    LeafTwo24Regular,
+    LeafTwo24Filled,
 } from '@vicons/fluent';
 import { PrayingHands } from '@vicons/fa';
 
@@ -28,6 +28,10 @@ export const useMenuStore = defineStore('useMenuStore', () => {
     const menuSelected = ref<string>('read-bible');
     const router = useRouter();
     const isRouter = ref<boolean>(false);
+    // Deep-link signal: set to 'sermons' before selecting the 'grow' tab to
+    // land directly on the Sermons screen instead of the hub. Grow.vue
+    // consumes and clears it.
+    const growInitialScreen = ref<'sermons' | null>(null);
     const menuSessionKey = 'menu-session';
     const mainStore = useMainStore();
 
@@ -40,10 +44,10 @@ export const useMenuStore = defineStore('useMenuStore', () => {
             iconDark: renderNIcon(Book24Filled),
         },
         {
-            label: 'Sermons',
-            key: 'sermons',
-            icon: renderNIcon(DocumentQueueMultiple24Regular),
-            iconDark: renderNIcon(DocumentQueueMultiple24Filled),
+            label: 'Grow',
+            key: 'grow',
+            icon: renderNIcon(LeafTwo24Regular),
+            iconDark: renderNIcon(LeafTwo24Filled),
         },
         {
             label: 'Prayer List',
@@ -95,7 +99,7 @@ export const useMenuStore = defineStore('useMenuStore', () => {
     const localSavedTabsKey = 'localSavedTabsKey';
     const enableTab = ref([
         'read-bible',
-        'sermons',
+        'grow',
         '/prayer-list',
         '/daily-devotional',
         '/ai-assistant',
@@ -175,6 +179,13 @@ export const useMenuStore = defineStore('useMenuStore', () => {
                 savedLocalTabsKey = savedLocalTabsKey.filter((t: string) => t !== '/games');
                 session.set(localSavedTabsKey, savedLocalTabsKey);
             }
+            // Sermons moved under the Grow hub: migrate saved tab lists.
+            if (savedLocalTabsKey.includes('sermons')) {
+                savedLocalTabsKey = Array.from(
+                    new Set(savedLocalTabsKey.map((t: string) => (t === 'sermons' ? 'grow' : t)))
+                );
+                session.set(localSavedTabsKey, savedLocalTabsKey);
+            }
 
             enableTab.value = session.get(localSavedTabsKey);
         }
@@ -182,6 +193,8 @@ export const useMenuStore = defineStore('useMenuStore', () => {
         const savedMenu: { isRouter: boolean; menuSelected: string } | undefined | null = session.get(menuSessionKey);
 
         if (savedMenu) {
+            // Sermons moved under the Grow hub: migrate saved selection.
+            if (savedMenu.menuSelected === 'sermons') savedMenu.menuSelected = 'grow';
             await setMenu(savedMenu.menuSelected);
             return;
         }
@@ -190,6 +203,7 @@ export const useMenuStore = defineStore('useMenuStore', () => {
     return {
         menuSelected,
         isRouter,
+        growInitialScreen,
         setMenu,
         setMenuWithNoRoute,
         menuUpperTabs,

@@ -221,7 +221,8 @@ function populateForm(sermon: import('../../store/Sermons').SermonType) {
 
 async function goBackToSermons() {
     if (isEditing.value) sermonStore.requestedTab = 'mine';
-    menuStore.setMenuWithNoRoute('sermons');
+    menuStore.growInitialScreen = 'sermons';
+    menuStore.setMenuWithNoRoute('grow');
 
     if (route.name === 'CreateSermon') {
         await router.replace('/');

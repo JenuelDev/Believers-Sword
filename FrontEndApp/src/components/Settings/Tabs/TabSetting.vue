@@ -10,7 +10,7 @@ const menuStore = useMenuStore();
         <NCheckboxGroup v-model:value="menuStore.enableTab">
             <div class="flex flex-col gap-3">
                 <div>
-                    <NCheckbox :label="$t('Sermons')" value="sermons" />
+                    <NCheckbox :label="$t('Grow')" value="grow" />
                     <p class="text-xs opacity-50 mt-0.5 ml-6">{{ $t('manage-sermons-desc') }}</p>
                 </div>
                 <div>
