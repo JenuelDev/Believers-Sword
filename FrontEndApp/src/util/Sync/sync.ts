@@ -99,10 +99,41 @@ async function pushSync(token: string): Promise<number> {
  * Pull remote changes since the last sync timestamp and apply them locally.
  * Handles paginated responses — keeps fetching while `has_more` is true.
  */
-async function pullSync(token: string): Promise<void> {
-    let since: string = await window.browserWindow.getLastSyncTimestamp();
+/** Key of the one-time cursor heal (see {@link healCursorOnce}). */
+const CURSOR_HEAL_KEY = 'cursor_heal_v1';
 
-    while (true) {
+/**
+ * Hard cap on pages per pull cycle, so a server that stops advancing its cursor
+ * can't spin the pull loop forever. Far above any real backlog — whatever is
+ * left over is picked up by the next cycle.
+ */
+const MAX_PULL_PAGES = 100;
+
+/**
+ * One-time full re-pull, run once per device.
+ *
+ * The server used to hand back a cursor that could sort *above* rows written
+ * during that same request (sub-second precision against whole-second columns,
+ * stamped after the queries ran). A client only ever asks for rows newer than
+ * its stored cursor and never revisits an older one, so those rows were skipped
+ * permanently — no later sync recovered them. Devices still holding such a
+ * cursor need one `since = 0` pull to catch up. Every apply path is idempotent
+ * (upsert / last-write-wins / MAX merges), so re-fetching everything only costs
+ * bandwidth. No-op on web, where these bridge calls are stubs.
+ */
+async function healCursorOnce(): Promise<void> {
+    if (await window.browserWindow.getSyncSetting(CURSOR_HEAL_KEY)) return;
+    await window.browserWindow.updateLastSyncTimestamp('0');
+    await window.browserWindow.setSyncSetting(CURSOR_HEAL_KEY, true);
+}
+
+async function pullSync(token: string): Promise<void> {
+    await healCursorOnce();
+
+    let since: string = await window.browserWindow.getLastSyncTimestamp();
+    let pages = 0;
+
+    while (pages++ < MAX_PULL_PAGES) {
         const response = await axios.get(`${API_BASE_URL}/sync/pull`, {
             params: { since },
             headers: { Authorization: `Bearer ${token}` },
