@@ -24,6 +24,20 @@ type ValidationResult = {
     warning?: string;
 };
 
+// MyBible places Maccabees at 200/210; the app uses 462/464 internally.
+const MYBIBLE_BOOK_NUMBER_ALIASES = new Map<number, number>([
+    [200, 462],
+    [210, 464],
+]);
+const SUPPORTED_MYBIBLE_IMPORT_BOOK_NUMBERS = new Set([
+    ...SUPPORTED_BOOK_NUMBERS,
+    ...MYBIBLE_BOOK_NUMBER_ALIASES.keys(),
+]);
+
+function normalizeMyBibleBookNumber(bookNumber: number): number {
+    return MYBIBLE_BOOK_NUMBER_ALIASES.get(bookNumber) ?? bookNumber;
+}
+
 /**
  * Validate a MyBible .sqlite3 file.
  * Checks for the required `verses` table schema and that book numbers are in the supported set.
@@ -49,7 +63,7 @@ async function validateMyBibleSqlite(filePath: string): Promise<ValidationResult
 
         const bookRows: { book_number: number }[] = await db('verses').distinct('book_number').select('book_number');
         const bookNumbers = bookRows.map(r => r.book_number);
-        const unsupported = bookNumbers.filter(bn => !SUPPORTED_BOOK_NUMBERS.has(bn));
+        const unsupported = bookNumbers.filter(bn => !SUPPORTED_MYBIBLE_IMPORT_BOOK_NUMBERS.has(bn));
 
         if (bookNumbers.length > 0 && unsupported.length === bookNumbers.length) {
             return {
@@ -59,7 +73,7 @@ async function validateMyBibleSqlite(filePath: string): Promise<ValidationResult
         }
 
         const countRow = await db('verses')
-            .whereIn('book_number', [...SUPPORTED_BOOK_NUMBERS])
+            .whereIn('book_number', [...SUPPORTED_MYBIBLE_IMPORT_BOOK_NUMBERS])
             .count('* as cnt')
             .first() as { cnt: number };
 
@@ -87,11 +101,11 @@ async function importMyBibleSqlite(filePath: string, fileName: string): Promise<
     try {
         const rows: { book_number: number; chapter: number; verse: number; text: string }[] =
             await src('verses')
-                .whereIn('book_number', [...SUPPORTED_BOOK_NUMBERS])
+                .whereIn('book_number', [...SUPPORTED_MYBIBLE_IMPORT_BOOK_NUMBERS])
                 .select('book_number', 'chapter', 'verse', 'text');
 
         const verses: ParsedVerse[] = rows.map(r => ({
-            book_number: r.book_number,
+            book_number: normalizeMyBibleBookNumber(r.book_number),
             chapter: r.chapter,
             verse: r.verse,
             text: r.text ?? '',
