@@ -5,6 +5,10 @@ import { applyAutoLaunch } from "../../Reminders/ReminderScheduler";
 
 const MIN_SCALE = 0.75;
 const MAX_SCALE = 1.5;
+const NORMAL_MIN_WIDTH = 1226;
+const NORMAL_MIN_HEIGHT = 700;
+const IMMERSIVE_MIN_WIDTH = 360;
+const IMMERSIVE_MIN_HEIGHT = 500;
 
 function normalizeScale(scale: number) {
     if (!Number.isFinite(scale)) return 1;
@@ -66,6 +70,35 @@ const setAppScale = (win: BrowserWindow, scale: number): number => {
     return normalizedScale;
 };
 
+const setImmersiveWindowMode = (win: BrowserWindow, enabled: boolean): void => {
+    try {
+        if (win.isDestroyed()) return;
+
+        if (enabled) {
+            win.setMinimumSize(IMMERSIVE_MIN_WIDTH, IMMERSIVE_MIN_HEIGHT);
+            return;
+        }
+
+        win.setMinimumSize(NORMAL_MIN_WIDTH, NORMAL_MIN_HEIGHT);
+
+        // setMinimumSize does not grow an existing window. If the reader was
+        // made narrower, restore the normal minimum as soon as it closes.
+        if (!win.isMaximized()) {
+            const { width, height } = win.getBounds();
+            if (width < NORMAL_MIN_WIDTH || height < NORMAL_MIN_HEIGHT) {
+                win.setSize(
+                    Math.max(width, NORMAL_MIN_WIDTH),
+                    Math.max(height, NORMAL_MIN_HEIGHT),
+                    false,
+                );
+            }
+        }
+    } catch {
+        // Window teardown can race this renderer request. Keep reader
+        // open/close independent from native window sizing failures.
+    }
+};
+
 export const windowBrowserEvents = (win: BrowserWindow) => {
     win.on('maximize', () => win.webContents.send('window:maximized', true));
     win.on('unmaximize', () => win.webContents.send('window:maximized', false));
@@ -78,6 +111,9 @@ export const windowBrowserEvents = (win: BrowserWindow) => {
     });
     ipcMain.handle('getAppScale', () => getAppScale(win));
     ipcMain.handle('setAppScale', (_event, scale: number) => setAppScale(win, scale));
+    ipcMain.handle('set-immersive-window-mode', (_event, enabled: boolean) =>
+        setImmersiveWindowMode(win, enabled === true),
+    );
     // Persist current theme colors so the next launch's loading splash matches them.
     ipcMain.handle('set-splash-theme', (_event, payload) => {
         appConfig.set('setting.splashTheme', payload);

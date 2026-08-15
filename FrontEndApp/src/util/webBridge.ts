@@ -187,6 +187,7 @@ const stub: Window['browserWindow'] = {
     onWindowMaximized: () => { warnOnce('onWindowMaximized'); },
     getAppScale: async () => 1,
     setAppScale: async (scale: number) => scale,
+    setImmersiveWindowMode: async () => { /* no-op on web — immersive mode is Electron-only */ },
     appReady: () => { /* no-op on web — no splash window */ },
     setSplashTheme: async () => { /* no-op on web — no splash window */ },
 

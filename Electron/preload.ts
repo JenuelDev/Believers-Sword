@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('browserWindow', {
     isWindowBrowserMaximized: () => ipcRenderer.invoke('isWindowBrowserMaximized'),
     getAppScale: () => ipcRenderer.invoke('getAppScale'),
     setAppScale: (scale: number) => ipcRenderer.invoke('setAppScale', scale),
+    setImmersiveWindowMode: (enabled: boolean) => ipcRenderer.invoke('set-immersive-window-mode', enabled),
     // Tell main the app has fully rendered, so it can close the splash and show the window.
     appReady: () => ipcRenderer.send('app-ready'),
     // Persist the current theme colors so the next launch's splash can match them.
