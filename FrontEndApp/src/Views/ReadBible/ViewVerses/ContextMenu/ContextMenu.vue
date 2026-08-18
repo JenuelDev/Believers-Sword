@@ -26,7 +26,22 @@ const convo = useConversationStore();
 const menuStore = useMenuStore();
 const message = useMessage();
 const contextMenuRef = ref(null);
-const emits = defineEmits(['close', 'create-clip-note']);
+
+// Shape of the verse reference `data` (the `data` prop below, sourced from
+// bibleStore.renderVerses — see clickContextMenu() in ViewVerses.vue) that gets
+// forwarded to CreateClipNote.vue's toggleClipNoteModal() to seed a new note.
+// Exported so ViewVerses.vue's @create-clip-note handler can share the same
+// type rather than redeclaring it.
+export interface ClipNoteVerseRef {
+    book_number: number;
+    chapter: number;
+    verse: number;
+}
+
+const emits = defineEmits<{
+    close: [];
+    'create-clip-note': [data: ClipNoteVerseRef];
+}>();
 const bookmarkStore = useBookmarkStore();
 const showColorPicker = ref(false);
 
@@ -313,7 +328,12 @@ async function clickContextMenu(key: string) {
     } else if (key == 'copy-verse') {
         await copyVerses();
     } else if (key == 'create-clip-note') {
-        emits('create-clip-note', props.data);
+        // `data` is declared as a loose `Object` prop (see defineProps below —
+        // it also stands in for bookmark/highlight payloads elsewhere in this
+        // file), but a context-menu verse ref always carries these three
+        // fields, exactly as relied on directly at props.data.book_number
+        // etc. a few lines down for 'compare-verse'.
+        emits('create-clip-note', props.data as ClipNoteVerseRef);
     } else if (key == 'highlight-verse') {
         showColorPicker.value = !showColorPicker.value;
         return; // Don't close menu

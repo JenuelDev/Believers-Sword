@@ -6,6 +6,7 @@ import { Attachment, BookmarkFilled, Copy, Delete, Edit, Add, Close } from '@vic
 import SESSION from '../../../util/session';
 import { useMouse } from '@vueuse/core';
 import ContextMenu from './ContextMenu/ContextMenu.vue';
+import type { ClipNoteVerseRef } from './ContextMenu/ContextMenu.vue';
 import BibleVersionPickerModal from './BibleVersionPickerModal.vue';
 import { useBookmarkStore } from '../../../store/bookmark';
 import CreateClipNoteVue from '../../../components/ClipNotes/CreateClipNote.vue';
@@ -533,6 +534,15 @@ async function handleStrongsMouseDown(event: MouseEvent, verse: any) {
 }
 const message = useMessage();
 const createClipNoteRef = ref<null | { toggleClipNoteModal: Function }>(null);
+
+// Named handler (rather than an inline template arrow) so `data` gets its type
+// from an explicit annotation instead of relying on vue-tsc inferring it from
+// the ContextMenu emit signature, which this vue-tsc version does not do for
+// inline template listeners.
+function handleCreateClipNote(data: ClipNoteVerseRef) {
+    createClipNoteRef.value?.toggleClipNoteModal(data);
+}
+
 const clipNoteRender: any = (key: any) => {
     return (clipNoteStore.chapterClipNotes as any)[key]
         ? (clipNoteStore.chapterClipNotes as any)[key]
@@ -1315,9 +1325,7 @@ onUnmounted(() => {
             :y="contextMenuPositionY"
             :selected-verses-data="contextMenuSelectedVerses"
             @close="showContextMenu = false"
-            @create-clip-note="
-                (data) => (createClipNoteRef ? createClipNoteRef.toggleClipNoteModal(data) : false)
-            "
+            @create-clip-note="handleCreateClipNote"
         />
         <BibleVersionPickerModal
             v-model:show="versionPickerOpen"
