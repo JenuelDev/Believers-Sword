@@ -298,14 +298,16 @@ export const useSermonStore = defineStore('useSermonStore', () => {
         const isFav = favoriteIds.value.has(sermon.id);
         try {
             if (isFav) {
-                await window.browserWindow.removeSermonFavorite(sermon.id);
+                const res = await window.browserWindow.removeSermonFavorite(sermon.id);
+                if (!res?.success) console.warn('removeSermonFavorite failed', res?.error);
                 favoriteIds.value.delete(sermon.id);
                 favorites.value = favorites.value.filter((s) => s.id !== sermon.id);
             } else {
                 // Strip Vue's reactive Proxy before crossing the IPC boundary —
                 // structured clone can't serialise reactive wrappers.
                 const plain = JSON.parse(JSON.stringify(sermon));
-                await window.browserWindow.addSermonFavorite(plain);
+                const res = await window.browserWindow.addSermonFavorite(plain);
+                if (!res?.success) console.warn('addSermonFavorite failed', res?.error);
                 favoriteIds.value.add(sermon.id);
                 favorites.value = [sermon, ...favorites.value.filter((s) => s.id !== sermon.id)];
             }

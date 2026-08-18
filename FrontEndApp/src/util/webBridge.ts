@@ -509,18 +509,29 @@ const stub: Window['browserWindow'] = {
         if (typeof sermon?.id !== 'string' || !sermon.id) {
             return { success: false, error: 'Missing sermon id' };
         }
-        await apiFetch('/sermon-favorites', {}, {
-            method: 'POST',
-            body: JSON.stringify({ sermon_id: sermon.id }),
-        });
-        return { success: true };
+        // apiFetch never throws: it returns the fallback on a missing token, a
+        // non-ok response, or a network error. So `null` is the sentinel that
+        // tells a real 200 apart from any of those, and the caller gets the truth.
+        const res = await apiFetch<{ status?: string } | null>(
+            '/sermon-favorites',
+            null,
+            { method: 'POST', body: JSON.stringify({ sermon_id: sermon.id }) },
+        );
+        return res?.status === 'success'
+            ? { success: true }
+            : { success: false, error: 'Failed to save favorite' };
     },
 
     removeSermonFavorite: async (sermonId: string) => {
-        await apiFetch(`/sermon-favorites/${encodeURIComponent(sermonId)}`, {}, {
-            method: 'DELETE',
-        });
-        return { success: true };
+        // Same sentinel reasoning as addSermonFavorite above.
+        const res = await apiFetch<{ status?: string } | null>(
+            `/sermon-favorites/${encodeURIComponent(sermonId)}`,
+            null,
+            { method: 'DELETE' },
+        );
+        return res?.status === 'success'
+            ? { success: true }
+            : { success: false, error: 'Failed to remove favorite' };
     },
 
     // ---------- Export (TODO: replace with client-side jsPDF/docx libs) ----------
