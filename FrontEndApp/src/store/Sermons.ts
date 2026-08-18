@@ -132,10 +132,6 @@ export function scriptureRefLabel(ref: ScriptureRef): string {
     return `${base}:${versePart}`;
 }
 
-// Guards loadFavorites()'s re-entrant hydration call so filling in stub
-// favorites (see loadFavorites below) can never recurse more than once.
-let hydrating = false;
-
 export const useSermonStore = defineStore('useSermonStore', () => {
     // Feed (public sermons)
     const sermons = ref<SermonType[]>([]);
@@ -253,7 +249,6 @@ export const useSermonStore = defineStore('useSermonStore', () => {
     }
 
     async function loadFavorites() {
-        if (!window.isElectron) return;
         try {
             const [ids, items] = await Promise.all([
                 window.browserWindow.getSermonFavoriteIds(),
@@ -262,37 +257,36 @@ export const useSermonStore = defineStore('useSermonStore', () => {
             favoriteIds.value = new Set(ids.map(String));
             favorites.value = items as SermonType[];
 
-            if (hydrating) return;
-
             // Favorites pulled from another device arrive as a stub payload
             // ({ id: uuid }) because the backend stores only the uuid. Fill in bodies
             // from Supabase. The probe is a missing `slug`, NOT a null payload — the
             // pull applier always writes a stub, so a null check would never fire.
             const stubs = (items as SermonType[]).filter((s) => !s.slug).map((s) => s.id);
             if (stubs.length && supabaseConfigured()) {
-                hydrating = true;
                 try {
                     const res = await axios.get(
                         `${REST_URL}/sermons?select=*&id=in.(${stubs.join(',')})`,
                         { headers: supabaseHeaders() },
                     );
-                    for (const row of res.data ?? []) {
-                        const full = normalizeSermon(row);
-                        await window.browserWindow.addSermonFavorite(
-                            JSON.parse(JSON.stringify(full)),
-                        );
-                    }
-                    // Only re-fetch if hydration actually wrote something — every
-                    // stub id pointing at a deleted/unpublished sermon means an
-                    // empty result, and re-running loadFavorites() would just be a
-                    // pointless extra IPC round-trip.
-                    if (res.data?.length) {
-                        await loadFavorites();
+                    const hydrated: SermonType[] = (res.data ?? []).map(normalizeSermon);
+                    if (hydrated.length) {
+                        // Persist locally so Electron can read favorites offline. Web has
+                        // no local store — its bridge keeps only the uuid — so for web
+                        // the in-memory list below is the only place bodies ever live.
+                        if (window.isElectron) {
+                            for (const full of hydrated) {
+                                await window.browserWindow.addSermonFavorite(
+                                    JSON.parse(JSON.stringify(full)),
+                                );
+                            }
+                        }
+                        // Merge into the rendered list on BOTH platforms, replacing the
+                        // stub entries in place so order is preserved.
+                        const byId = new Map(hydrated.map((s) => [s.id, s]));
+                        favorites.value = favorites.value.map((s) => byId.get(s.id) ?? s);
                     }
                 } catch (e) {
                     console.warn('favorite hydration failed', e);
-                } finally {
-                    hydrating = false;
                 }
             }
         } catch (e) {
