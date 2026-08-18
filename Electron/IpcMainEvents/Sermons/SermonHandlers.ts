@@ -6,8 +6,12 @@ import { logSyncChange } from '../../DataBase/SyncDB';
 /**
  * IPC handlers for the sermons offline cache and sermon favorites.
  *
+ * Sermons now come from the public Supabase catalog, keyed by uuid.
+ *
  * - `cached_sermons` is overwritten on each successful first-page fetch from
- *   the backend, so the Sermons view can fall back to local data when offline.
+ *   the catalog, and holds the full sermon body (not just a preview), so the
+ *   Sermons view can fall back to local data — including reading, not merely
+ *   browsing — when offline.
  *
  * - `sermon_favorites` stores user-starred sermons (with their full payload so
  *   they remain readable offline). Every mutation logs a sync_logs entry with
@@ -22,11 +26,11 @@ export const SermonHandlers = () => {
                 await trx('cached_sermons').delete();
                 if (!Array.isArray(sermons) || sermons.length === 0) return;
                 const rows = sermons.slice(0, 10).map((s, i) => ({
-                    sermon_id: s?.id,
+                    sermon_uuid: s?.id,
                     position: i,
                     payload: JSON.stringify(s),
                     cached_at: now,
-                })).filter((r) => typeof r.sermon_id === 'number');
+                })).filter((r) => typeof r.sermon_uuid === 'string' && r.sermon_uuid.length > 0);
                 if (rows.length) await trx('cached_sermons').insert(rows);
             });
             return { success: true };
@@ -58,8 +62,8 @@ export const SermonHandlers = () => {
 
     ipcMain.handle('getSermonFavoriteIds', async () => {
         try {
-            const rows = await StoreDB('sermon_favorites').select('sermon_id');
-            return rows.map((r: any) => r.sermon_id as number);
+            const rows = await StoreDB('sermon_favorites').select('sermon_uuid');
+            return rows.map((r: any) => r.sermon_uuid as string);
         } catch (error) {
             Log.error('getSermonFavoriteIds failed:', error);
             return [];
@@ -69,32 +73,32 @@ export const SermonHandlers = () => {
     ipcMain.handle('addSermonFavorite', async (_event, sermon: any) => {
         try {
             const id = sermon?.id;
-            if (typeof id !== 'number') return { success: false };
+            if (typeof id !== 'string' || !id) return { success: false };
             const now = new Date().toISOString();
             const payload = JSON.stringify(sermon);
-            const existing = await StoreDB('sermon_favorites').where({ sermon_id: id }).first();
+            const existing = await StoreDB('sermon_favorites').where({ sermon_uuid: id }).first();
             if (existing) {
-                await StoreDB('sermon_favorites').where({ sermon_id: id }).update({
+                await StoreDB('sermon_favorites').where({ sermon_uuid: id }).update({
                     payload,
                     updated_at: now,
                 });
                 await logSyncChange({
                     table_name: 'sermon_favorites',
-                    record_key: String(id),
+                    record_key: id,
                     action: 'updated',
                     payload: { sermon_id: id },
                     synced: 0,
                 });
             } else {
                 await StoreDB('sermon_favorites').insert({
-                    sermon_id: id,
+                    sermon_uuid: id,
                     payload,
                     created_at: now,
                     updated_at: now,
                 });
                 await logSyncChange({
                     table_name: 'sermon_favorites',
-                    record_key: String(id),
+                    record_key: id,
                     action: 'created',
                     payload: { sermon_id: id },
                     synced: 0,
@@ -107,12 +111,12 @@ export const SermonHandlers = () => {
         }
     });
 
-    ipcMain.handle('removeSermonFavorite', async (_event, sermonId: number) => {
+    ipcMain.handle('removeSermonFavorite', async (_event, sermonId: string) => {
         try {
-            await StoreDB('sermon_favorites').where({ sermon_id: sermonId }).delete();
+            await StoreDB('sermon_favorites').where({ sermon_uuid: sermonId }).delete();
             await logSyncChange({
                 table_name: 'sermon_favorites',
-                record_key: String(sermonId),
+                record_key: sermonId,
                 action: 'deleted',
                 payload: { sermon_id: sermonId },
                 synced: 0,

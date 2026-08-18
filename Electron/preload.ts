@@ -198,7 +198,7 @@ contextBridge.exposeInMainWorld('browserWindow', {
     getSermonFavorites: () => ipcRenderer.invoke('getSermonFavorites'),
     getSermonFavoriteIds: () => ipcRenderer.invoke('getSermonFavoriteIds'),
     addSermonFavorite: (sermon: any) => ipcRenderer.invoke('addSermonFavorite', sermon),
-    removeSermonFavorite: (sermonId: number) => ipcRenderer.invoke('removeSermonFavorite', sermonId),
+    removeSermonFavorite: (sermonId: string) => ipcRenderer.invoke('removeSermonFavorite', sermonId),
     onSyncBeforeQuit: (cb: () => void) => ipcRenderer.on('app:sync-before-quit', cb),
     notifySyncBeforeQuitDone: () => ipcRenderer.send('app:sync-before-quit-done'),
 

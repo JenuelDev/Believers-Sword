@@ -249,9 +249,9 @@ declare global {
             replaceCachedSermons: (sermons: any[]) => Promise<{ success: boolean; error?: string }>;
             getCachedSermons: () => Promise<any[]>;
             getSermonFavorites: () => Promise<any[]>;
-            getSermonFavoriteIds: () => Promise<number[]>;
+            getSermonFavoriteIds: () => Promise<string[]>;
             addSermonFavorite: (sermon: any) => Promise<{ success: boolean; error?: string }>;
-            removeSermonFavorite: (sermonId: number) => Promise<{ success: boolean; error?: string }>;
+            removeSermonFavorite: (sermonId: string) => Promise<{ success: boolean; error?: string }>;
 
             // Export
             exportToPdf: (args: { html: string; filename: string }) => Promise<any>;

@@ -1,25 +1,40 @@
 import { StoreDB } from '../../../DataBase/DataBase';
 
 /**
- * `sermon_favorites` holds sermons the user has starred. The full sermon
- * payload is stored alongside the id so favorited sermons remain readable
- * offline even if removed from the backend.
+ * `sermon_favorites` holds sermons the user has starred, with the full sermon
+ * payload alongside the key so favorites stay readable offline.
  *
- * Synced to the backend table `user_sermon_favorites` via sync_logs entries
- * with table_name = 'sermon_favorites' (record_key = sermon_id).
+ * Synced to the backend `user_sermon_favorites` via sync_logs entries with
+ * table_name = 'sermon_favorites' and record_key = the Supabase sermon uuid.
+ *
+ * Same `hasColumn('sermon_uuid')` marker as cached_sermons. The sync_logs
+ * cleanup is NOT optional: an integer-keyed favorite push queued before this
+ * upgrade would otherwise be sent to a backend that now expects uuids, whose
+ * 36-char guard would happily accept a short integer and store a junk row.
  */
-export default async () => {
-    await StoreDB.schema.hasTable('sermon_favorites').then(async (exists) => {
-        if (exists) return;
-        try {
-            await StoreDB.schema.createTable('sermon_favorites', (table) => {
-                table.integer('sermon_id').primary();
-                table.text('payload').notNullable();
-                table.string('created_at').notNullable();
-                table.string('updated_at').notNullable();
-            });
-        } catch (e) {
-            console.log(e);
-        }
+const createTable = async () => {
+    await StoreDB.schema.createTable('sermon_favorites', (table) => {
+        table.string('sermon_uuid').primary();
+        table.text('payload').notNullable();
+        table.string('created_at').notNullable();
+        table.string('updated_at').notNullable();
     });
+};
+
+export default async () => {
+    try {
+        const exists = await StoreDB.schema.hasTable('sermon_favorites');
+        if (!exists) {
+            await createTable();
+            return;
+        }
+        const migrated = await StoreDB.schema.hasColumn('sermon_favorites', 'sermon_uuid');
+        if (migrated) return;
+
+        await StoreDB.schema.dropTable('sermon_favorites');
+        await createTable();
+        await StoreDB('sync_logs').where({ table_name: 'sermon_favorites' }).delete();
+    } catch (e) {
+        console.log(e);
+    }
 };
