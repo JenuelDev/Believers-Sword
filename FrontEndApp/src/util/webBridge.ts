@@ -474,13 +474,54 @@ const stub: Window['browserWindow'] = {
     saveAiInsight: async () => false,
     pruneAiInsights: async () => false,
 
-    // ---------- Sermons offline cache + favorites (no-op on web — backend is source of truth) ----------
+    // ---------- Sermons offline cache + favorites ----------
+    //
+    // The offline cache stays a no-op: web is always online, so there is
+    // nothing for it to fall back to.
+    //
+    // Favorites are real on web, unlike every other web write in this file.
+    // Web has no local SQLite and cannot use the sync protocol (util/Sync/sync.ts
+    // runs entirely through window.browserWindow, which is *this* shim), so the
+    // backend is its only store. Sermon BODIES are not in the backend — it keeps
+    // uuids only — so getSermonFavorites returns stub rows and the store
+    // hydrates them from Supabase, exactly as it does for a synced favorite on
+    // desktop.
     replaceCachedSermons: async () => ({ success: false, error: 'Not available on web' }),
     getCachedSermons: async () => [],
-    getSermonFavorites: async () => [],
-    getSermonFavoriteIds: async () => [],
-    addSermonFavorite: async () => ({ success: false, error: 'Not available on web' }),
-    removeSermonFavorite: async () => ({ success: false, error: 'Not available on web' }),
+
+    getSermonFavorites: async () => {
+        const res = await apiFetch<{ data?: Array<{ sermon_id: string }> }>(
+            '/sermon-favorites',
+            {},
+        );
+        return (res.data ?? []).map((row) => ({ id: row.sermon_id }));
+    },
+
+    getSermonFavoriteIds: async () => {
+        const res = await apiFetch<{ data?: Array<{ sermon_id: string }> }>(
+            '/sermon-favorites',
+            {},
+        );
+        return (res.data ?? []).map((row) => row.sermon_id);
+    },
+
+    addSermonFavorite: async (sermon: any) => {
+        if (typeof sermon?.id !== 'string' || !sermon.id) {
+            return { success: false, error: 'Missing sermon id' };
+        }
+        await apiFetch('/sermon-favorites', {}, {
+            method: 'POST',
+            body: JSON.stringify({ sermon_id: sermon.id }),
+        });
+        return { success: true };
+    },
+
+    removeSermonFavorite: async (sermonId: string) => {
+        await apiFetch(`/sermon-favorites/${encodeURIComponent(sermonId)}`, {}, {
+            method: 'DELETE',
+        });
+        return { success: true };
+    },
 
     // ---------- Export (TODO: replace with client-side jsPDF/docx libs) ----------
     exportToPdf: async () => { warnOnce('exportToPdf'); return { success: false, error: 'Not yet on web' }; },
