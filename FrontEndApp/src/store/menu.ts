@@ -105,7 +105,6 @@ export const useMenuStore = defineStore('useMenuStore', () => {
         '/ai-assistant',
         // '/profile',
         '/settings-page',
-        '/create-sermon',
         '/donate-page',
         // Games is desktop-only (bundled game DBs + local progress).
         ...(window.isElectron ? ['/games'] : []),
@@ -162,10 +161,6 @@ export const useMenuStore = defineStore('useMenuStore', () => {
         // for saved tabs
         let savedLocalTabsKey = session.get(localSavedTabsKey);
         if (savedLocalTabsKey) {
-            if (!savedLocalTabsKey.includes('/create-sermon')) {
-                savedLocalTabsKey.push('/create-sermon');
-                session.set(localSavedTabsKey, savedLocalTabsKey);
-            }
             if (!savedLocalTabsKey.includes('/ai-assistant')) {
                 savedLocalTabsKey.push('/ai-assistant');
                 session.set(localSavedTabsKey, savedLocalTabsKey);
@@ -186,6 +181,16 @@ export const useMenuStore = defineStore('useMenuStore', () => {
                 );
                 session.set(localSavedTabsKey, savedLocalTabsKey);
             }
+            // '/create-sermon' was removed when sermons became a read-only
+            // catalog. Strip it from saved tab lists, and move a saved
+            // selection off it below — otherwise a returning user lands on a
+            // route that no longer exists.
+            if (savedLocalTabsKey.includes('/create-sermon')) {
+                savedLocalTabsKey = savedLocalTabsKey.filter(
+                    (t: string) => t !== '/create-sermon'
+                );
+                session.set(localSavedTabsKey, savedLocalTabsKey);
+            }
 
             enableTab.value = session.get(localSavedTabsKey);
         }
@@ -195,6 +200,9 @@ export const useMenuStore = defineStore('useMenuStore', () => {
         if (savedMenu) {
             // Sermons moved under the Grow hub: migrate saved selection.
             if (savedMenu.menuSelected === 'sermons') savedMenu.menuSelected = 'grow';
+            // '/create-sermon' was removed when sermons became a read-only
+            // catalog: move a saved selection off it too.
+            if (savedMenu.menuSelected === '/create-sermon') savedMenu.menuSelected = 'grow';
             await setMenu(savedMenu.menuSelected);
             return;
         }

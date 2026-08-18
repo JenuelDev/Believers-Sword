@@ -4,11 +4,8 @@ import PrayerList from './../Views/PrayerList/PrayerList.vue';
 import WebSubscriptionGate from './../Views/UserProfile/Pages/WebSubscriptionGate.vue';
 import AboutPage from './../Views/About/About.vue';
 import HelpPortal from './../Views/HelpPortal/HelpPortal.vue';
-import CreateSermon from './../Views/CreateSermon/CreateSermon.vue';
 import LoginPage from './../Views/UserProfile/Pages/Login.vue';
 import ProfileAccountPage from './../Views/UserProfile/Pages/Profile/Profile.vue';
-import TextBaseSermon from '../Views/CreateSermon/TextBaseSermon.vue';
-import YoutubeShare from '../Views/CreateSermon/YoutubeShare.vue';
 import UserProfileLayout from './../Views/UserProfile/Profile.vue';
 import CompareVerse from '../Views/CompareVerse/CompareVerse.vue';
 import DailyDevotional from '../Views/DailyDevotional/DailyDevotional.vue';
@@ -62,21 +59,6 @@ export const routes: Array<RouteRecordRaw> = [
         name: 'HelpPortal',
         path: '/help-portal',
         component: HelpPortal,
-    },
-    {
-        name: 'CreateSermon',
-        path: '/create-sermon',
-        component: CreateSermon,
-    },
-    {
-        name: "CreateTextBaseSermon",
-        path: "/create-text-base-sermon",
-        component: TextBaseSermon
-    },
-    {
-        name: "CreateSermonYoutubeShare",
-        path: "/create-sermon-youtube-share",
-        component: YoutubeShare
     },
     {
         name: 'CompareVerse',
