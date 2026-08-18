@@ -233,7 +233,7 @@ const message: InternationalMessageType = {
     "Check for Updates": "Periksa Pembaruan",
     "up-to-date": "Anda sudah menggunakan versi terbaru",
     "choose-visible-tabs": "Pilih tab mana yang terlihat di bilah navigasi.",
-    "manage-sermons-desc": "Jelajahi khotbah dan renungan yang diterbitkan.",
+    "manage-sermons-desc": "Jelajahi khotbah yang diterbitkan.",
     "track-prayer-desc": "Lacak dan atur permintaan doa pribadi Anda.",
     "Select Book": "Pilih Kitab",
     "Search Using Text": "Cari Menggunakan Teks",

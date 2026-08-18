@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { NButton, NInput, NSelect, NSpin } from 'naive-ui';
+import { NButton, NInput, NSelect, NSpin, useMessage } from 'naive-ui';
 import { computed, ref } from 'vue';
 import { useSermonStore, SermonType } from '../../store/Sermons';
 import { useInfiniteScroll } from '@vueuse/core';
@@ -11,6 +11,12 @@ const emit = defineEmits<{
 }>();
 
 const sermonStore = useSermonStore();
+const message = useMessage();
+
+async function handleToggleFavorite(sermon: SermonType) {
+    const ok = await sermonStore.toggleFavorite(sermon);
+    if (!ok) message.error("Couldn't update favorites. Please try again.");
+}
 
 const browseEl = ref<HTMLElement | null>(null);
 
@@ -163,7 +169,7 @@ const emptyState = computed(() => {
                             class="card-fav-btn"
                             :class="{ active: sermonStore.isFavorite(sermon.id) }"
                             :title="sermonStore.isFavorite(sermon.id) ? 'Remove from favorites' : 'Add to favorites'"
-                            @click.stop="sermonStore.toggleFavorite(sermon)"
+                            @click.stop="handleToggleFavorite(sermon)"
                         >
                             <Icon :icon="sermonStore.isFavorite(sermon.id) ? 'mdi:star' : 'mdi:star-outline'" />
                         </button>

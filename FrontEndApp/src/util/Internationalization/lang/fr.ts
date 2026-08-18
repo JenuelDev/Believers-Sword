@@ -233,7 +233,7 @@ const message: InternationalMessageType = {
     "Check for Updates": "Vérifier les mises à jour",
     "up-to-date": "Vous êtes à jour",
     "choose-visible-tabs": "Choisissez les onglets visibles dans la barre de navigation.",
-    "manage-sermons-desc": "Parcourez les sermons et dévotions publiés.",
+    "manage-sermons-desc": "Parcourez les sermons publiés.",
     "track-prayer-desc": "Suivez et organisez vos demandes de prière personnelles.",
     "Select Book": "Sélectionner un livre",
     "Search Using Text": "Rechercher par texte",

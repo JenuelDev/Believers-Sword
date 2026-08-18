@@ -1,12 +1,14 @@
 <script lang="ts" setup>
 import { ref, onBeforeUnmount, onMounted, watch } from 'vue';
 import { useSermonStore, SermonType } from '../../store/Sermons';
+import { useAuthStore } from '../../store/authStore';
 import { Icon } from '@iconify/vue';
 import SermonFeed from './SermonFeed.vue';
 import SermonFavorites from './SermonFavorites.vue';
 import SermonDetailModal from './SermonDetailModal.vue';
 
 const sermonStore = useSermonStore();
+const authStore = useAuthStore();
 
 const activeTab = ref<'browse' | 'favorites'>('browse');
 const selectedSermon = ref<SermonType | null>(null);
@@ -56,6 +58,25 @@ watch(showDetailModal, (showing) => {
     if (!showing) clearSermonViewTimer();
 });
 
+// loadFavorites() only runs once per process (the store calls it from its own
+// onBeforeMount, and the store is a singleton) — so a favorite pulled from
+// another device, or starred right after signing in, would otherwise stay
+// invisible until an app restart. Reload whenever the Favorites tab is
+// selected, and on sign-in/sign-out so a returning session's favorites show
+// up without a page reload and a previous user's stars don't linger after
+// logout.
+watch(activeTab, (tab) => {
+    if (tab === 'favorites') sermonStore.loadFavorites();
+});
+
+watch(
+    () => authStore.isAuthenticated,
+    (authenticated) => {
+        if (authenticated) sermonStore.loadFavorites();
+        else sermonStore.clearFavorites();
+    }
+);
+
 onMounted(() => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 });
@@ -73,7 +94,7 @@ onBeforeUnmount(() => {
         <div class="page-header">
             <div>
                 <h1 class="page-title">{{ $t('Sermons') }}</h1>
-                <p class="page-subtitle">Browse messages from the community</p>
+                <p class="page-subtitle">Browse our curated collection of sermons</p>
             </div>
         </div>
 

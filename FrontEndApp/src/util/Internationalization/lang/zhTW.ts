@@ -233,7 +233,7 @@ const message: InternationalMessageType = {
     "Check for Updates": "檢查更新",
     "up-to-date": "已是最新版本",
     "choose-visible-tabs": "選擇在導覽列中顯示哪些標籤頁。",
-    "manage-sermons-desc": "瀏覽已發布的講道和靈修內容。",
+    "manage-sermons-desc": "瀏覽已發布的講道。",
     "track-prayer-desc": "追蹤和整理您的個人禱告事項。",
     "Select Book": "選擇書卷",
     "Search Using Text": "以文字搜尋",

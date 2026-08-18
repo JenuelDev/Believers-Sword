@@ -193,11 +193,12 @@ contextBridge.exposeInMainWorld('browserWindow', {
     applyPullData: (data: any) => ipcRenderer.invoke('applyPullData', data),
 
     // Sermons offline cache + favorites
-    replaceCachedSermons: (sermons: any[]) => ipcRenderer.invoke('replaceCachedSermons', sermons),
+    replaceCachedSermons: (sermons: any[], limit?: number) => ipcRenderer.invoke('replaceCachedSermons', sermons, limit),
     getCachedSermons: () => ipcRenderer.invoke('getCachedSermons'),
     getSermonFavorites: () => ipcRenderer.invoke('getSermonFavorites'),
     getSermonFavoriteIds: () => ipcRenderer.invoke('getSermonFavoriteIds'),
     addSermonFavorite: (sermon: any) => ipcRenderer.invoke('addSermonFavorite', sermon),
+    refreshSermonFavoritePayload: (sermon: any) => ipcRenderer.invoke('refreshSermonFavoritePayload', sermon),
     removeSermonFavorite: (sermonId: string) => ipcRenderer.invoke('removeSermonFavorite', sermonId),
     onSyncBeforeQuit: (cb: () => void) => ipcRenderer.on('app:sync-before-quit', cb),
     notifySyncBeforeQuitDone: () => ipcRenderer.send('app:sync-before-quit-done'),

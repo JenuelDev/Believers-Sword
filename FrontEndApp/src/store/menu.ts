@@ -28,10 +28,6 @@ export const useMenuStore = defineStore('useMenuStore', () => {
     const menuSelected = ref<string>('read-bible');
     const router = useRouter();
     const isRouter = ref<boolean>(false);
-    // Deep-link signal: set to 'sermons' before selecting the 'grow' tab to
-    // land directly on the Sermons screen instead of the hub. Grow.vue
-    // consumes and clears it.
-    const growInitialScreen = ref<'sermons' | null>(null);
     const menuSessionKey = 'menu-session';
     const mainStore = useMainStore();
 
@@ -211,7 +207,6 @@ export const useMenuStore = defineStore('useMenuStore', () => {
     return {
         menuSelected,
         isRouter,
-        growInitialScreen,
         setMenu,
         setMenuWithNoRoute,
         menuUpperTabs,

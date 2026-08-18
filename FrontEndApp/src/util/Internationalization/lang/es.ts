@@ -233,7 +233,7 @@ const message: InternationalMessageType = {
     "Check for Updates": "Buscar actualizaciones",
     "up-to-date": "Estás actualizado",
     "choose-visible-tabs": "Elige qué pestañas son visibles en la barra de navegación.",
-    "manage-sermons-desc": "Explora sermones y devocionales publicados.",
+    "manage-sermons-desc": "Explora sermones publicados.",
     "track-prayer-desc": "Registra y organiza tus peticiones de oración personales.",
     "Select Book": "Seleccionar libro",
     "Search Using Text": "Buscar por texto",

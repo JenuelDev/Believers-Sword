@@ -32,6 +32,15 @@ const CARD_COLUMNS = [
     'featured', 'view_count',
 ].join(',');
 
+/**
+ * Full row columns — card columns plus everything the detail modal needs.
+ * Deliberately omits `search_vector` (generated tsvector) and `transcript`,
+ * neither of which normalizeSermon reads; `select=*` on the live catalog
+ * ships ~1.7x the bytes this does. Mirrors mobile's sermonFullColumns exactly
+ * so both clients query identically.
+ */
+const FULL_COLUMNS = `${CARD_COLUMNS},content,content_format,speaker_title,speaker_avatar_url,scripture_refs,video_url,audio_url`;
+
 export type ScriptureRef = {
     book: string;          // as authored, e.g. "1 Samuel"
     bookNumber: number | null;
@@ -166,27 +175,35 @@ export const useSermonStore = defineStore('useSermonStore', () => {
         if (!window.isElectron) return;
         try {
             const res = await axios.get(
-                `${REST_URL}/sermons?select=*&order=featured.desc,published_at.desc&limit=${CACHE_LIMIT}`,
+                `${REST_URL}/sermons?select=${FULL_COLUMNS}&order=featured.desc,published_at.desc&limit=${CACHE_LIMIT}`,
                 { headers: supabaseHeaders() },
             );
             const rows = (res.data ?? []).map(normalizeSermon);
             // Strip Vue reactive wrappers before crossing IPC.
             const plain = JSON.parse(JSON.stringify(rows));
-            await window.browserWindow.replaceCachedSermons(plain);
+            // Pass the cap through rather than letting the Electron side hardcode
+            // its own copy of it — otherwise raising CACHE_LIMIT here silently
+            // does nothing on the write side.
+            await window.browserWindow.replaceCachedSermons(plain, CACHE_LIMIT);
         } catch (e) {
             console.warn('replaceCachedSermons failed', e);
         }
     }
 
     async function getSermons(fresh = false) {
+        // Guard first: resetting page/sermons before checking `loading` drops a
+        // second search/sort-change/refresh fired while a request is already in
+        // flight — the stale response then repopulates the list for the old
+        // query. Only reset once we know this call will actually run.
+        if (loading.value || (!fresh && !hasMore.value)) return;
         if (fresh) {
             page.value = 1;
             sermons.value = [];
         }
-        if (loading.value || (!fresh && !hasMore.value)) return;
         loading.value = true;
 
-        const isFirstUnfiltered = fresh && !search.value && !topicFilter.value && sort.value === 'recent';
+        const trimmedSearch = search.value.trim();
+        const isFirstUnfiltered = fresh && !trimmedSearch && !topicFilter.value && sort.value === 'recent';
 
         try {
             // Skip the request entirely when unconfigured so a build without the
@@ -199,7 +216,7 @@ export const useSermonStore = defineStore('useSermonStore', () => {
                 limit: String(PAGE_SIZE + 1),   // the extra row is the has-more sentinel
                 offset: String((page.value - 1) * PAGE_SIZE),
             });
-            if (search.value) params.set('search_vector', `plfts(english).${search.value}`);
+            if (trimmedSearch) params.set('search_vector', `plfts(english).${trimmedSearch}`);
             if (topicFilter.value) params.set('topics', `cs.{${topicFilter.value}}`);
             params.set(
                 'order',
@@ -207,7 +224,7 @@ export const useSermonStore = defineStore('useSermonStore', () => {
                 : sort.value === 'popular' ? 'view_count.desc'
                 // Featured-first only on a browse feed; pinning featured rows to the top of
                 // a search result reads as broken.
-                : search.value ? 'published_at.desc'
+                : trimmedSearch ? 'published_at.desc'
                 : 'featured.desc,published_at.desc',
             );
             const res = await axios.get(`${REST_URL}/sermons?${params}`, { headers: supabaseHeaders() });
@@ -248,6 +265,13 @@ export const useSermonStore = defineStore('useSermonStore', () => {
         }
     }
 
+    /** Clear the in-memory favorites — used when signing out so the previous
+     *  user's stars don't linger on screen. */
+    function clearFavorites() {
+        favoriteIds.value = new Set();
+        favorites.value = [];
+    }
+
     async function loadFavorites() {
         try {
             const [ids, items] = await Promise.all([
@@ -255,17 +279,56 @@ export const useSermonStore = defineStore('useSermonStore', () => {
                 window.browserWindow.getSermonFavorites(),
             ]);
             favoriteIds.value = new Set(ids.map(String));
-            favorites.value = items as SermonType[];
+            // normalizeSermon gives a bare stub ({ id: uuid }) safe defaults
+            // (title: 'Untitled', etc.) instead of rendering a blank card and
+            // opening a blank-titled modal.
+            favorites.value = (items as any[]).map(normalizeSermon);
 
-            // Favorites pulled from another device arrive as a stub payload
-            // ({ id: uuid }) because the backend stores only the uuid. Fill in bodies
-            // from Supabase. The probe is a missing `slug`, NOT a null payload — the
-            // pull applier always writes a stub, so a null check would never fire.
-            const stubs = (items as SermonType[]).filter((s) => !s.slug).map((s) => s.id);
-            if (stubs.length && supabaseConfigured()) {
+            // Favorites need a body fetch in two cases: a bare stub pulled from
+            // another device ({ id: uuid } — the backend only stores the uuid),
+            // or a card-columns payload favorited straight off the feed (has a
+            // `slug` but `content` is still null). The probe is therefore a
+            // missing `content`, NOT a missing `slug` — the latter only tells
+            // you it's a bare stub, and would skip the card-row case entirely,
+            // leaving a sermon the user just starred unavailable offline.
+            // Pruning (dropping favorites the backend no longer has) keys on
+            // `slug` instead and is out of scope here.
+            let needsBody = favorites.value.filter((s) => !s.content);
+            if (!needsBody.length) return;
+
+            // Satisfy from the local cache first — those top-N rows already
+            // carry a full body precisely so this can work offline, and a
+            // sermon that's already cached hydrates with zero network calls.
+            if (window.isElectron) {
                 try {
+                    const cached = await loadCachedSermons();
+                    const cachedById = new Map(
+                        cached.filter((s) => s.content).map((s) => [s.id, s]),
+                    );
+                    const fromCache = needsBody
+                        .map((s) => cachedById.get(s.id))
+                        .filter((s): s is SermonType => !!s);
+                    if (fromCache.length) {
+                        const byId = new Map(fromCache.map((s) => [s.id, s]));
+                        favorites.value = favorites.value.map((s) => byId.get(s.id) ?? s);
+                        // update()-only, no sync_log — see refreshSermonFavoritePayload.
+                        for (const full of fromCache) {
+                            await window.browserWindow.refreshSermonFavoritePayload(
+                                JSON.parse(JSON.stringify(full)),
+                            );
+                        }
+                        needsBody = needsBody.filter((s) => !byId.has(s.id));
+                    }
+                } catch (e) {
+                    console.warn('cache favorite hydration failed', e);
+                }
+            }
+
+            if (needsBody.length && supabaseConfigured()) {
+                try {
+                    const ids2 = needsBody.map((s) => s.id);
                     const res = await axios.get(
-                        `${REST_URL}/sermons?select=*&id=in.(${stubs.join(',')})`,
+                        `${REST_URL}/sermons?select=${FULL_COLUMNS}&id=in.(${ids2.join(',')})`,
                         { headers: supabaseHeaders() },
                     );
                     const hydrated: SermonType[] = (res.data ?? []).map(normalizeSermon);
@@ -273,9 +336,19 @@ export const useSermonStore = defineStore('useSermonStore', () => {
                         // Persist locally so Electron can read favorites offline. Web has
                         // no local store — its bridge keeps only the uuid — so for web
                         // the in-memory list below is the only place bodies ever live.
+                        //
+                        // Writes through refreshSermonFavoritePayload, NOT
+                        // addSermonFavorite: that helper is update()-only and logs no
+                        // sync change, because (a) these favorites already exist
+                        // server-side so hydrating them must queue nothing, and (b) if
+                        // the user unstarred while this fetch was in flight, the row is
+                        // already gone — addSermonFavorite would re-insert it and push a
+                        // resurrection to the server while the in-memory state says
+                        // un-starred. The Flutter app has the same helper for the same
+                        // reason.
                         if (window.isElectron) {
                             for (const full of hydrated) {
-                                await window.browserWindow.addSermonFavorite(
+                                await window.browserWindow.refreshSermonFavoritePayload(
                                     JSON.parse(JSON.stringify(full)),
                                 );
                             }
@@ -294,12 +367,25 @@ export const useSermonStore = defineStore('useSermonStore', () => {
         }
     }
 
-    async function toggleFavorite(sermon: SermonType) {
+    /**
+     * Toggle a favorite. Returns `false` on a failed write so the caller can
+     * surface an error — on web `{ success: false }` is `apiFetch`'s fallback
+     * for "no token" / any non-2xx / any network error; on Electron it means
+     * the local SQLite write genuinely failed. Either way, applying the
+     * favoriteIds/favorites mutation anyway would light up (or extinguish) the
+     * star for a change that never actually persisted, and a signed-out or
+     * offline user would lose it on reload. The mutation below only runs
+     * after a successful write, so on failure there is nothing to roll back.
+     */
+    async function toggleFavorite(sermon: SermonType): Promise<boolean> {
         const isFav = favoriteIds.value.has(sermon.id);
         try {
             if (isFav) {
                 const res = await window.browserWindow.removeSermonFavorite(sermon.id);
-                if (!res?.success) console.warn('removeSermonFavorite failed', res?.error);
+                if (!res?.success) {
+                    console.warn('removeSermonFavorite failed', res?.error);
+                    return false;
+                }
                 favoriteIds.value.delete(sermon.id);
                 favorites.value = favorites.value.filter((s) => s.id !== sermon.id);
             } else {
@@ -307,14 +393,19 @@ export const useSermonStore = defineStore('useSermonStore', () => {
                 // structured clone can't serialise reactive wrappers.
                 const plain = JSON.parse(JSON.stringify(sermon));
                 const res = await window.browserWindow.addSermonFavorite(plain);
-                if (!res?.success) console.warn('addSermonFavorite failed', res?.error);
+                if (!res?.success) {
+                    console.warn('addSermonFavorite failed', res?.error);
+                    return false;
+                }
                 favoriteIds.value.add(sermon.id);
                 favorites.value = [sermon, ...favorites.value.filter((s) => s.id !== sermon.id)];
             }
             favoriteIds.value = new Set(favoriteIds.value);
             debouncedRunSync();
+            return true;
         } catch (e) {
             console.warn('toggleFavorite failed', e);
+            return false;
         }
     }
 
@@ -323,7 +414,10 @@ export const useSermonStore = defineStore('useSermonStore', () => {
     async function fetchTopics() {
         if (topics.value.length || !supabaseConfigured()) return;
         try {
-            const res = await axios.get(`${REST_URL}/sermons?select=topics`, { headers: supabaseHeaders() });
+            const res = await axios.get(
+                `${REST_URL}/sermons?select=topics&limit=1000`,
+                { headers: supabaseHeaders() },
+            );
             const all = new Set<string>();
             for (const row of res.data ?? []) for (const t of row.topics ?? []) all.add(t);
             topics.value = [...all].sort();
@@ -337,13 +431,33 @@ export const useSermonStore = defineStore('useSermonStore', () => {
         if (!supabaseConfigured()) return null;
         try {
             const res = await axios.get(
-                `${REST_URL}/sermons?select=*&slug=eq.${encodeURIComponent(slug)}&limit=1`,
+                `${REST_URL}/sermons?select=${FULL_COLUMNS}&slug=eq.${encodeURIComponent(slug)}&limit=1`,
                 { headers: supabaseHeaders() },
             );
             const row = (res.data ?? [])[0];
             return row ? normalizeSermon(row) : null;
         } catch (e) {
             console.warn('fetchBySlug failed', e);
+            return null;
+        }
+    }
+
+    /**
+     * Full row for one sermon by id — used when a favorite stub has no slug
+     * yet (fetchBySlug can't key on an empty string) and hydration hasn't
+     * filled one in.
+     */
+    async function fetchById(id: string): Promise<SermonType | null> {
+        if (!supabaseConfigured()) return null;
+        try {
+            const res = await axios.get(
+                `${REST_URL}/sermons?select=${FULL_COLUMNS}&id=eq.${encodeURIComponent(id)}&limit=1`,
+                { headers: supabaseHeaders() },
+            );
+            const row = (res.data ?? [])[0];
+            return row ? normalizeSermon(row) : null;
+        } catch (e) {
+            console.warn('fetchById failed', e);
             return null;
         }
     }
@@ -390,12 +504,14 @@ export const useSermonStore = defineStore('useSermonStore', () => {
         fetchTopics,
         // Detail
         fetchBySlug,
+        fetchById,
         recordSermonView,
         // Offline + favorites
         feedStatus,
         favoriteIds,
         favorites,
         loadFavorites,
+        clearFavorites,
         toggleFavorite,
         isFavorite: (id: string) => favoriteIds.value.has(id),
     };

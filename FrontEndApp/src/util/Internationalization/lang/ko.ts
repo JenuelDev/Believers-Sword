@@ -233,7 +233,7 @@ const message: InternationalMessageType = {
     "Check for Updates": "업데이트 확인",
     "up-to-date": "최신 상태입니다",
     "choose-visible-tabs": "내비게이션 바에 표시할 탭을 선택하세요.",
-    "manage-sermons-desc": "게시된 설교와 묵상 자료를 둘러봅니다.",
+    "manage-sermons-desc": "게시된 설교를 둘러봅니다.",
     "track-prayer-desc": "개인 기도 요청을 추적하고 정리합니다.",
     "Select Book": "책 선택",
     "Search Using Text": "텍스트로 검색",

@@ -1,3 +1,4 @@
+import Log from 'electron-log';
 import { StoreDB } from '../../../DataBase/DataBase';
 
 /**
@@ -31,10 +32,18 @@ export default async () => {
         const migrated = await StoreDB.schema.hasColumn('sermon_favorites', 'sermon_uuid');
         if (migrated) return;
 
+        // Cleanup runs FIRST, before dropTable: if createTable then threw, the
+        // table would already be dropped with no cleanup having run, and the
+        // next boot would take the `!exists` branch above — which has no
+        // cleanup at all — permanently stranding stale integer-keyed
+        // sermon_favorites sync_logs that sync.ts would happily push to a
+        // backend whose 36-char guard accepts a short integer without
+        // complaint. Running it first is harmless on a fresh install too:
+        // there is nothing to delete yet.
+        await StoreDB('sync_logs').where({ table_name: 'sermon_favorites' }).delete();
         await StoreDB.schema.dropTable('sermon_favorites');
         await createTable();
-        await StoreDB('sync_logs').where({ table_name: 'sermon_favorites' }).delete();
     } catch (e) {
-        console.log(e);
+        Log.error('sermon_favorites migration failed:', e);
     }
 };

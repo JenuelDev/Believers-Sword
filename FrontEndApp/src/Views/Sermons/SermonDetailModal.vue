@@ -32,6 +32,11 @@ const moduleStore = useModuleStore();
 // "not available offline" message shows instead of a blank panel.
 const hydrated = ref<SermonType | null>(null);
 const hydrating = ref(false);
+// A stub favorite with no slug (and no id-based match either) — distinct from
+// "not available offline" so a fully-online user isn't told to blame the
+// network for a sermon that simply doesn't resolve (e.g. unpublished/deleted
+// server-side).
+const notFound = ref(false);
 
 function handleUpdateShow(value: boolean) {
     if (!value) emit('close');
@@ -43,11 +48,13 @@ watch(
         if (!show || !sermon) {
             hydrated.value = null;
             hydrating.value = false;
+            notFound.value = false;
             resetScriptureState();
             return;
         }
 
         resetScriptureState();
+        notFound.value = false;
 
         if (sermon.content) {
             hydrated.value = sermon;
@@ -57,7 +64,15 @@ watch(
 
         hydrated.value = null;
         hydrating.value = true;
-        const full = await sermonStore.fetchBySlug(sermon.slug);
+        // A favorite stub can arrive with no slug yet (pulled from another
+        // device, or hydration hasn't run) — fetchBySlug('') would build
+        // `slug=eq.undefined`/`slug=eq.` and always return [], so fall back to
+        // an id-based fetch instead.
+        const full = sermon.slug
+            ? await sermonStore.fetchBySlug(sermon.slug)
+            : sermon.id
+                ? await sermonStore.fetchById(sermon.id)
+                : null;
         // The modal may have closed or moved on to a different sermon while
         // the fetch was in flight — ignore a now-stale response.
         if (!props.show || props.sermon !== sermon) return;
@@ -65,6 +80,8 @@ watch(
         if (full) {
             hydrated.value = full;
             loadSermonScripture(full);
+        } else if (!sermon.slug) {
+            notFound.value = true;
         }
     },
     { immediate: true },
@@ -304,6 +321,9 @@ watch(
                     <div v-if="hydrating" class="detail-content detail-content-loading">
                         <NSpin size="small" />
                     </div>
+                    <div v-else-if="notFound" class="detail-content opacity-60">
+                        Sermon details are unavailable.
+                    </div>
                     <div v-else-if="!hydrated?.content" class="detail-content opacity-60">
                         Not available offline.
                     </div>
@@ -318,7 +338,13 @@ watch(
                         v-html="renderMarkdown(hydrated.content)"
                     />
                     <div v-else class="detail-content">
-                        <p v-for="(block, i) in hydrated.content.split(/\n{2,}/)" :key="i">{{ block }}</p>
+                        <!-- Mirrors mobile's SermonBody plain-format fallback: split on
+                             blank lines, trim each block, drop empties rather than
+                             rendering blank paragraphs. -->
+                        <p
+                            v-for="(block, i) in hydrated.content.split(/\n{2,}/).map((b) => b.trim()).filter((b) => b.length > 0)"
+                            :key="i"
+                        >{{ block }}</p>
                     </div>
 
                     <div v-if="sermon.topics?.length" class="detail-tags">

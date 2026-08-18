@@ -233,7 +233,7 @@ const message: InternationalMessageType = {
     "Check for Updates": "التحقق من التحديثات",
     "up-to-date": "أنت محدّث",
     "choose-visible-tabs": "اختر علامات التبويب المرئية في شريط التنقل.",
-    "manage-sermons-desc": "تصفح العظات والتأملات المنشورة.",
+    "manage-sermons-desc": "تصفح العظات المنشورة.",
     "track-prayer-desc": "تتبع وتنظيم طلبات الصلاة الشخصية.",
     "Select Book": "اختر سفراً",
     "Search Using Text": "البحث بالنص",

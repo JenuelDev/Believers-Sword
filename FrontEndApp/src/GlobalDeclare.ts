@@ -246,11 +246,12 @@ declare global {
             notifySyncBeforeQuitDone: () => void;
 
             // Sermons offline cache + favorites
-            replaceCachedSermons: (sermons: any[]) => Promise<{ success: boolean; error?: string }>;
+            replaceCachedSermons: (sermons: any[], limit?: number) => Promise<{ success: boolean; error?: string }>;
             getCachedSermons: () => Promise<any[]>;
             getSermonFavorites: () => Promise<any[]>;
             getSermonFavoriteIds: () => Promise<string[]>;
             addSermonFavorite: (sermon: any) => Promise<{ success: boolean; error?: string }>;
+            refreshSermonFavoritePayload: (sermon: any) => Promise<{ success: boolean; error?: string }>;
             removeSermonFavorite: (sermonId: string) => Promise<{ success: boolean; error?: string }>;
 
             // Export

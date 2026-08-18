@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import { useMessage } from 'naive-ui';
 import { useSermonStore, SermonType } from '../../store/Sermons';
 import { Icon } from '@iconify/vue';
 
@@ -7,6 +8,12 @@ const emit = defineEmits<{
 }>();
 
 const sermonStore = useSermonStore();
+const message = useMessage();
+
+async function handleToggleFavorite(sermon: SermonType) {
+    const ok = await sermonStore.toggleFavorite(sermon);
+    if (!ok) message.error("Couldn't update favorites. Please try again.");
+}
 </script>
 
 <template>
@@ -33,7 +40,7 @@ const sermonStore = useSermonStore();
                             type="button"
                             class="absolute top-1 right-1 w-32px h-32px rounded-full bg-black/55 flex items-center justify-center text-yellow-400 hover:bg-black/75"
                             title="Remove from favorites"
-                            @click.stop="sermonStore.toggleFavorite(sermon)"
+                            @click.stop="handleToggleFavorite(sermon)"
                         >
                             <Icon icon="mdi:star" width="20" />
                         </button>

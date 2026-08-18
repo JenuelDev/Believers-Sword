@@ -233,7 +233,7 @@ const message: InternationalMessageType = {
     "Check for Updates": "Tingnan ang mga Update",
     "up-to-date": "Na-update ka na",
     "choose-visible-tabs": "Piliin kung aling mga tab ang makikita sa navigation bar.",
-    "manage-sermons-desc": "I-browse ang mga nailathalang sermon at debosyonal.",
+    "manage-sermons-desc": "I-browse ang mga nailathalang sermon.",
     "track-prayer-desc": "I-track at ayusin ang iyong mga personal na kahilingan sa panalangin.",
     "Select Book": "Pumili ng Aklat",
     "Search Using Text": "Maghanap Gamit ang Teksto",

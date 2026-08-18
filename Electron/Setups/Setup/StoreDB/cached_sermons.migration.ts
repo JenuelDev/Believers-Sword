@@ -1,3 +1,4 @@
+import Log from 'electron-log';
 import { StoreDB } from '../../../DataBase/DataBase';
 
 /**
@@ -34,6 +35,6 @@ export default async () => {
         await StoreDB.schema.dropTable('cached_sermons');
         await createTable();
     } catch (e) {
-        console.log(e);
+        Log.error('cached_sermons migration failed:', e);
     }
 };

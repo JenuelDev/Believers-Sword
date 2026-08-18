@@ -522,6 +522,12 @@ const stub: Window['browserWindow'] = {
             : { success: false, error: 'Failed to save favorite' };
     },
 
+    // Web has no local store to refresh — the backend only ever holds the
+    // uuid, so there is no payload to persist. loadFavorites only calls this
+    // behind an `isElectron` check; the in-memory favorites list is where a
+    // hydrated body lives on web.
+    refreshSermonFavoritePayload: async () => ({ success: false, error: 'Not available on web' }),
+
     removeSermonFavorite: async (sermonId: string) => {
         // Same sentinel reasoning as addSermonFavorite above.
         const res = await apiFetch<{ status?: string } | null>(
