@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { computed, onBeforeMount, ref, watch } from 'vue';
+import { onBeforeMount, ref, watch } from 'vue';
 import axios from 'axios';
 import { debouncedRunSync } from '../util/Sync/sync';
 import { bookNumberFromName } from '../util/bookNameLookup';
@@ -7,7 +7,6 @@ import { bookNumberFromName } from '../util/bookNameLookup';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
 const REST_URL = `${SUPABASE_URL.replace(/\/+$/, '')}/rest/v1`;
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/api`;
 
 const supabaseConfigured = () => Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
@@ -283,7 +282,13 @@ export const useSermonStore = defineStore('useSermonStore', () => {
                             JSON.parse(JSON.stringify(full)),
                         );
                     }
-                    await loadFavorites();
+                    // Only re-fetch if hydration actually wrote something — every
+                    // stub id pointing at a deleted/unpublished sermon means an
+                    // empty result, and re-running loadFavorites() would just be a
+                    // pointless extra IPC round-trip.
+                    if (res.data?.length) {
+                        await loadFavorites();
+                    }
                 } catch (e) {
                     console.warn('favorite hydration failed', e);
                 } finally {

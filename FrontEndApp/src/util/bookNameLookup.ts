@@ -30,11 +30,16 @@ const ALIASES: Record<string, number> = {
     'song of songs': 260,
 };
 
+// Index by `title` only — `short_name` is deliberately excluded. `books.ts`
+// has a genuine collision on short_name 'Jud' (Judith 180 vs. Jude 720); a
+// plain assignment would let one silently overwrite the other and resolve
+// abbreviations to the wrong book. The Flutter app's equivalent
+// (book_name_lookup.dart) also inverts a full-name-only map, so both
+// platforms agree on what resolves.
 const byName: Record<string, number> = (() => {
     const map: Record<string, number> = {};
     for (const book of bibleBooks) {
         map[normalizeBookName(book.title)] = book.book_number;
-        if (book.short_name) map[normalizeBookName(book.short_name)] = book.book_number;
     }
     return { ...map, ...ALIASES };
 })();
