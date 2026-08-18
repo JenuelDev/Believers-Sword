@@ -1,110 +1,157 @@
 import { defineStore } from 'pinia';
 import { computed, onBeforeMount, ref, watch } from 'vue';
 import axios from 'axios';
-import { useAuthStore } from './authStore';
 import { debouncedRunSync } from '../util/Sync/sync';
+import { bookNumberFromName } from '../util/bookNameLookup';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
+const REST_URL = `${SUPABASE_URL.replace(/\/+$/, '')}/rest/v1`;
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/api`;
 
+const supabaseConfigured = () => Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+
+// PostgREST wants `apikey`; RLS reads `Authorization: Bearer`. Send both.
+const supabaseHeaders = () => ({
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+});
+
+const PAGE_SIZE = 20;
+const CACHE_LIMIT = 10;
+
+/**
+ * Columns the feed needs. Mirrors the website's cardColumns
+ * (believers-sword-website/app/composables/useSermons.ts) plus view_count,
+ * which the apps show and the website does not. `content` is deliberately
+ * absent — it is the large column and the feed never renders it.
+ */
+const CARD_COLUMNS = [
+    'id', 'slug', 'title', 'subtitle', 'summary', 'speaker_name',
+    'series_name', 'series_part', 'primary_scripture', 'topics',
+    'thumbnail_url', 'duration_seconds', 'published_at', 'preached_at',
+    'featured', 'view_count',
+].join(',');
+
 export type ScriptureRef = {
-    book: number;
-    chapter: number;
-    verse: number[];
-};
-
-export type SermonCategory = {
-    id: number;
-    name: string;
-    slug: string;
-};
-
-export type SermonSeries = {
-    id: number;
-    title: string;
-    description?: string | null;
-    thumbnail_url?: string | null;
-};
-
-export type SermonCreator = {
-    id: number;
-    name: string;
-    username?: string | null;
-    info?: { profile_picture?: string | null } | null;
+    book: string;          // as authored, e.g. "1 Samuel"
+    bookNumber: number | null;
+    chapter: number | null;
+    verse_start: number | null;
+    verse_end: number | null;
 };
 
 export type SermonType = {
-    id: number;
-    title: string;
+    id: string;            // uuid
     slug: string;
-    created_by: number;
-    preacher_name: string | null;
-    short_summary: string;
-    content: string;
-    main_scripture: ScriptureRef[] | null;
-    scripture_references: ScriptureRef[] | null;
-    sermon_date: string | null;
-    sermon_series_id: number | null;
-    category_id: number | null;
-    status: 'draft' | 'published' | 'archived';
-    visibility: 'public' | 'private' | 'unlisted';
-    thumbnail_url: string | null;
-    audio_url: string | null;
+    title: string;
+    subtitle: string | null;
+    summary: string | null;
+    content: string | null;        // null on a card row
+    content_format: 'markdown' | 'html' | 'plain';
+    speaker_name: string;
+    speaker_title: string | null;
+    speaker_avatar_url: string | null;
+    series_name: string | null;
+    series_part: number | null;
+    scripture_refs: ScriptureRef[];
+    primary_scripture: string | null;
+    topics: string[];
     video_url: string | null;
+    audio_url: string | null;
+    thumbnail_url: string | null;
     duration_seconds: number | null;
-    tags: string[] | null;
+    featured: boolean;
     view_count: number;
     published_at: string | null;
-    created_at: string;
-    updated_at: string;
-    creator?: SermonCreator;
-    category?: SermonCategory | null;
-    series?: SermonSeries | null;
+    preached_at: string | null;
 };
 
-export type CreateSermonPayload = {
-    title: string;
-    short_summary: string;
-    content: string;
-    preacher_name?: string | null;
-    main_scripture?: ScriptureRef[] | null;
-    scripture_references?: ScriptureRef[] | null;
-    sermon_date?: string | null;
-    sermon_series_id?: number | null;
-    category_id?: number | null;
-    status?: 'draft' | 'published';
-    visibility?: 'public' | 'private' | 'unlisted';
-    thumbnail_url?: string | null;
-    audio_url?: string | null;
-    video_url?: string | null;
-    duration_seconds?: number | null;
-    tags?: string[] | null;
-};
+/**
+ * Map a PostgREST row to SermonType.
+ *
+ * Tolerates a card-columns row (no `content`, `content_format` or
+ * `scripture_refs`) as well as a full one — `content === null` is how the
+ * detail modal knows to fetch or fall back to the offline message. Also
+ * tolerates the stub payload `{ id: uuid }` that the sync applier writes for a
+ * favorite pulled from another device.
+ */
+function normalizeSermon(row: any): SermonType {
+    return {
+        id: String(row?.id ?? ''),
+        slug: row?.slug ?? '',
+        title: row?.title ?? 'Untitled',
+        subtitle: row?.subtitle ?? null,
+        summary: row?.summary ?? null,
+        content: row?.content ?? null,
+        content_format: row?.content_format ?? 'markdown',
+        speaker_name: row?.speaker_name ?? '',
+        speaker_title: row?.speaker_title ?? null,
+        speaker_avatar_url: row?.speaker_avatar_url ?? null,
+        series_name: row?.series_name ?? null,
+        series_part: row?.series_part ?? null,
+        scripture_refs: (row?.scripture_refs ?? []).map((ref: any) => ({
+            book: ref?.book ?? '',
+            // Supabase stores the book as a NAME; the reader needs a number.
+            // Null when unrecognised — the view must then render plain text.
+            bookNumber: bookNumberFromName(ref?.book),
+            chapter: ref?.chapter ?? null,
+            verse_start: ref?.verse_start ?? null,
+            verse_end: ref?.verse_end ?? null,
+        })),
+        primary_scripture: row?.primary_scripture ?? null,
+        topics: row?.topics ?? [],
+        video_url: row?.video_url ?? null,
+        audio_url: row?.audio_url ?? null,
+        thumbnail_url: row?.thumbnail_url ?? null,
+        duration_seconds: row?.duration_seconds ?? null,
+        featured: Boolean(row?.featured),
+        view_count: row?.view_count ?? 0,
+        published_at: row?.published_at ?? null,
+        preached_at: row?.preached_at ?? null,
+    };
+}
+
+/** "Grief · Part 2", "Grief", or '' when standalone. Mirrors mobile's seriesLabel. */
+export function sermonSeriesLabel(sermon: SermonType): string {
+    if (!sermon.series_name) return '';
+    return sermon.series_part
+        ? `${sermon.series_name} · Part ${sermon.series_part}`
+        : sermon.series_name;
+}
+
+/** Display label for one scripture ref: "John 11:1-44", "John 11", "Habakkuk". */
+export function scriptureRefLabel(ref: ScriptureRef): string {
+    if (!ref.book) return '';
+    if (!ref.chapter) return ref.book;
+    const base = `${ref.book} ${ref.chapter}`;
+    if (!ref.verse_start) return base;
+    const versePart =
+        ref.verse_end && ref.verse_end !== ref.verse_start
+            ? `${ref.verse_start}-${ref.verse_end}`
+            : `${ref.verse_start}`;
+    return `${base}:${versePart}`;
+}
+
+// Guards loadFavorites()'s re-entrant hydration call so filling in stub
+// favorites (see loadFavorites below) can never recurse more than once.
+let hydrating = false;
 
 export const useSermonStore = defineStore('useSermonStore', () => {
-    const authStore = useAuthStore();
-
     // Feed (public sermons)
     const sermons = ref<SermonType[]>([]);
     const loading = ref(false);
     const page = ref(1);
-    const lastPage = ref(1);
+    const hasMore = ref(true);
     const search = ref('');
-    const categoryFilter = ref<number | null>(null);
+    const topicFilter = ref('');
     const sort = ref<'recent' | 'popular' | 'oldest'>('recent');
 
-    // My sermons (authenticated)
-    const mySermons = ref<SermonType[]>([]);
-    const myLoading = ref(false);
-    const myPage = ref(1);
-    const myLastPage = ref(1);
-    const mySearch = ref('');
-    const myStatusFilter = ref<string>('');
-
-    // Categories
-    const categories = ref<SermonCategory[]>([]);
+    // Topics (for filter chips)
+    const topics = ref<string[]>([]);
 
     // Offline / favorites
-    const favoriteIds = ref<Set<number>>(new Set());
+    const favoriteIds = ref<Set<string>>(new Set());
     const favorites = ref<SermonType[]>([]);
     /**
      * Status of the most recent feed fetch — drives offline banner / empty
@@ -112,18 +159,28 @@ export const useSermonStore = defineStore('useSermonStore', () => {
      */
     const feedStatus = ref<'loading' | 'fresh' | 'staleOffline' | 'staleError' | 'emptyOffline' | 'emptyError'>('loading');
 
-    // Tab routing signal — set by CreateSermon to switch Sermons.vue to a specific tab
-    const requestedTab = ref<'browse' | 'mine' | null>(null);
+    const viewedSermonIds = new Set<string>();
+    const pendingViewSermonIds = new Set<string>();
 
-    // Sermon being edited — set before routing to /create-sermon?edit=X so the form
-    // can populate immediately without a find-by-id race against mySermons loading.
-    const editingSermon = ref<SermonType | null>(null);
-    const viewedSermonIds = new Set<number>();
-    const pendingViewSermonIds = new Set<number>();
-
-    function authHeaders() {
-        const token = authStore.token;
-        return token ? { Authorization: `Bearer ${token}` } : {};
+    /**
+     * Refresh the offline cache with full sermon bodies (card columns alone
+     * would leave an offline reader unable to open anything they cached).
+     * Best-effort and web-safe: no-ops outside Electron.
+     */
+    async function refreshCache() {
+        if (!window.isElectron) return;
+        try {
+            const res = await axios.get(
+                `${REST_URL}/sermons?select=*&order=featured.desc,published_at.desc&limit=${CACHE_LIMIT}`,
+                { headers: supabaseHeaders() },
+            );
+            const rows = (res.data ?? []).map(normalizeSermon);
+            // Strip Vue reactive wrappers before crossing IPC.
+            const plain = JSON.parse(JSON.stringify(rows));
+            await window.browserWindow.replaceCachedSermons(plain);
+        } catch (e) {
+            console.warn('replaceCachedSermons failed', e);
+        }
     }
 
     async function getSermons(fresh = false) {
@@ -131,35 +188,43 @@ export const useSermonStore = defineStore('useSermonStore', () => {
             page.value = 1;
             sermons.value = [];
         }
-        if (loading.value || page.value > lastPage.value) return;
+        if (loading.value || (!fresh && !hasMore.value)) return;
         loading.value = true;
 
-        const isFirstUnfiltered = fresh && !search.value && !categoryFilter.value && sort.value === 'recent';
+        const isFirstUnfiltered = fresh && !search.value && !topicFilter.value && sort.value === 'recent';
 
         try {
-            const params: Record<string, any> = { page: page.value };
-            if (search.value) params.search = search.value;
-            if (categoryFilter.value) params.category_id = categoryFilter.value;
-            if (sort.value !== 'recent') params.sort = sort.value;
+            // Skip the request entirely when unconfigured so a build without the
+            // env vars falls straight into the cached-or-error branch below
+            // instead of hitting /rest/v1 with an empty base URL.
+            if (!supabaseConfigured()) throw new Error('Supabase is not configured');
 
-            const res = await axios.get(`${API_BASE_URL}/sermons`, { params });
-            if (res.data.status === 'success') {
-                const paged = res.data.data;
-                sermons.value = fresh ? paged.data : [...sermons.value, ...paged.data];
-                lastPage.value = paged.last_page ?? 1;
-                if (isFirstUnfiltered) {
-                    feedStatus.value = 'fresh';
-                    // Replace offline cache with the top 10 we just received.
-                    // Strip Vue reactive wrappers before crossing IPC.
-                    if (window.isElectron && Array.isArray(paged.data)) {
-                        try {
-                            const plain = JSON.parse(JSON.stringify(paged.data.slice(0, 10)));
-                            await window.browserWindow.replaceCachedSermons(plain);
-                        } catch (e) {
-                            console.warn('replaceCachedSermons failed', e);
-                        }
-                    }
-                }
+            const params = new URLSearchParams({
+                select: CARD_COLUMNS,
+                limit: String(PAGE_SIZE + 1),   // the extra row is the has-more sentinel
+                offset: String((page.value - 1) * PAGE_SIZE),
+            });
+            if (search.value) params.set('search_vector', `plfts(english).${search.value}`);
+            if (topicFilter.value) params.set('topics', `cs.{${topicFilter.value}}`);
+            params.set(
+                'order',
+                sort.value === 'oldest' ? 'published_at.asc'
+                : sort.value === 'popular' ? 'view_count.desc'
+                // Featured-first only on a browse feed; pinning featured rows to the top of
+                // a search result reads as broken.
+                : search.value ? 'published_at.desc'
+                : 'featured.desc,published_at.desc',
+            );
+            const res = await axios.get(`${REST_URL}/sermons?${params}`, { headers: supabaseHeaders() });
+            const rows = (res.data ?? []).map(normalizeSermon);
+            hasMore.value = rows.length > PAGE_SIZE;
+            const pageRows = rows.slice(0, PAGE_SIZE);
+            sermons.value = fresh ? pageRows : [...sermons.value, ...pageRows];
+
+            if (isFirstUnfiltered) {
+                feedStatus.value = 'fresh';
+                // Replace offline cache with the top rows we just received.
+                await refreshCache();
             }
         } catch (e: any) {
             console.error('getSermons error', e);
@@ -195,15 +260,42 @@ export const useSermonStore = defineStore('useSermonStore', () => {
                 window.browserWindow.getSermonFavoriteIds(),
                 window.browserWindow.getSermonFavorites(),
             ]);
-            favoriteIds.value = new Set(ids);
+            favoriteIds.value = new Set(ids.map(String));
             favorites.value = items as SermonType[];
+
+            if (hydrating) return;
+
+            // Favorites pulled from another device arrive as a stub payload
+            // ({ id: uuid }) because the backend stores only the uuid. Fill in bodies
+            // from Supabase. The probe is a missing `slug`, NOT a null payload — the
+            // pull applier always writes a stub, so a null check would never fire.
+            const stubs = (items as SermonType[]).filter((s) => !s.slug).map((s) => s.id);
+            if (stubs.length && supabaseConfigured()) {
+                hydrating = true;
+                try {
+                    const res = await axios.get(
+                        `${REST_URL}/sermons?select=*&id=in.(${stubs.join(',')})`,
+                        { headers: supabaseHeaders() },
+                    );
+                    for (const row of res.data ?? []) {
+                        const full = normalizeSermon(row);
+                        await window.browserWindow.addSermonFavorite(
+                            JSON.parse(JSON.stringify(full)),
+                        );
+                    }
+                    await loadFavorites();
+                } catch (e) {
+                    console.warn('favorite hydration failed', e);
+                } finally {
+                    hydrating = false;
+                }
+            }
         } catch (e) {
             console.warn('loadFavorites failed', e);
         }
     }
 
     async function toggleFavorite(sermon: SermonType) {
-        if (!window.isElectron) return;
         const isFav = favoriteIds.value.has(sermon.id);
         try {
             if (isFav) {
@@ -225,162 +317,61 @@ export const useSermonStore = defineStore('useSermonStore', () => {
         }
     }
 
-    async function getMySermons(fresh = false) {
-        if (!authStore.isAuthenticated) return;
-        if (fresh) {
-            myPage.value = 1;
-            mySermons.value = [];
-        }
-        if (myLoading.value || myPage.value > myLastPage.value) return;
-        myLoading.value = true;
+    /** Distinct topics across the catalog, for the filter chips. Best-effort:
+     *  chips are optional, so any failure degrades to an empty list. */
+    async function fetchTopics() {
+        if (topics.value.length || !supabaseConfigured()) return;
         try {
-            const params: Record<string, any> = { page: myPage.value };
-            if (mySearch.value) params.search = mySearch.value;
-            if (myStatusFilter.value) params.status = myStatusFilter.value;
-
-            const res = await axios.get(`${API_BASE_URL}/my-sermons`, {
-                params,
-                headers: authHeaders(),
-            });
-            if (res.data.status === 'success') {
-                const paged = res.data.data;
-                mySermons.value = fresh ? paged.data : [...mySermons.value, ...paged.data];
-                myLastPage.value = paged.last_page ?? 1;
-            }
+            const res = await axios.get(`${REST_URL}/sermons?select=topics`, { headers: supabaseHeaders() });
+            const all = new Set<string>();
+            for (const row of res.data ?? []) for (const t of row.topics ?? []) all.add(t);
+            topics.value = [...all].sort();
         } catch (e) {
-            console.error('getMySermons error', e);
-        } finally {
-            myLoading.value = false;
+            console.warn('fetchTopics failed', e);
         }
     }
 
-    async function createSermon(
-        payload: CreateSermonPayload
-    ): Promise<{ success: boolean; sermon?: SermonType; message?: string }> {
+    /** Full row for one sermon — used when the cached/feed row has no body. */
+    async function fetchBySlug(slug: string): Promise<SermonType | null> {
+        if (!supabaseConfigured()) return null;
         try {
-            const res = await axios.post(`${API_BASE_URL}/sermons`, payload, {
-                headers: authHeaders(),
-            });
-            if (res.data.status === 'success') {
-                const created = res.data.sermon as SermonType;
-                mySermons.value = [created, ...mySermons.value];
-                return { success: true, sermon: created };
-            }
-            return { success: false, message: 'Failed to create sermon' };
-        } catch (error: any) {
-            return {
-                success: false,
-                message: error.response?.data?.message || error.message || 'Failed to create sermon',
-            };
-        }
-    }
-
-    async function updateSermon(
-        id: number,
-        payload: Partial<CreateSermonPayload>
-    ): Promise<{ success: boolean; sermon?: SermonType; message?: string }> {
-        try {
-            const res = await axios.patch(`${API_BASE_URL}/sermons/${id}`, payload, {
-                headers: authHeaders(),
-            });
-            if (res.data.status === 'success') {
-                const updated = res.data.sermon as SermonType;
-                const idx = mySermons.value.findIndex((s) => s.id === id);
-                if (idx !== -1) mySermons.value[idx] = updated;
-                return { success: true, sermon: updated };
-            }
-            return { success: false, message: 'Failed to update sermon' };
-        } catch (error: any) {
-            return {
-                success: false,
-                message: error.response?.data?.message || error.message || 'Failed to update sermon',
-            };
-        }
-    }
-
-    async function deleteSermon(id: number): Promise<{ success: boolean; message?: string }> {
-        try {
-            await axios.delete(`${API_BASE_URL}/sermons/${id}`, { headers: authHeaders() });
-            mySermons.value = mySermons.value.filter((s) => s.id !== id);
-            sermons.value = sermons.value.filter((s) => s.id !== id);
-            return { success: true };
-        } catch (error: any) {
-            return {
-                success: false,
-                message: error.response?.data?.message || error.message || 'Failed to delete sermon',
-            };
-        }
-    }
-
-    function replaceSermonInLists(updated: SermonType) {
-        const feedIdx = sermons.value.findIndex((s) => s.id === updated.id);
-        if (feedIdx !== -1) sermons.value[feedIdx] = updated;
-
-        const mineIdx = mySermons.value.findIndex((s) => s.id === updated.id);
-        if (mineIdx !== -1) mySermons.value[mineIdx] = updated;
-    }
-
-    function incrementLocalViewCount(id: number) {
-        const update = (sermon: SermonType) => {
-            sermon.view_count += 1;
-            return sermon;
-        };
-
-        const feedSermon = sermons.value.find((s) => s.id === id);
-        if (feedSermon) update(feedSermon);
-
-        const mySermon = mySermons.value.find((s) => s.id === id);
-        if (mySermon && mySermon !== feedSermon) update(mySermon);
-    }
-
-    async function recordSermonView(id: number): Promise<{ success: boolean; sermon?: SermonType; message?: string }> {
-        if (viewedSermonIds.has(id) || pendingViewSermonIds.has(id)) {
-            return { success: true };
-        }
-
-        pendingViewSermonIds.add(id);
-
-        try {
-            const res = await axios.post(`${API_BASE_URL}/sermons/${id}/view`, null, {
-                headers: authHeaders(),
-            });
-
-            const updated = (res.data.sermon ?? res.data.data) as SermonType | undefined;
-            if (updated?.id) {
-                replaceSermonInLists(updated);
-            } else {
-                incrementLocalViewCount(id);
-            }
-
-            viewedSermonIds.add(id);
-            return { success: true, sermon: updated };
-        } catch (error: any) {
-            return {
-                success: false,
-                message: error.response?.data?.message || error.message || 'Failed to record sermon view',
-            };
-        } finally {
-            pendingViewSermonIds.delete(id);
-        }
-    }
-
-    async function fetchCategories() {
-        if (categories.value.length) return;
-        try {
-            const res = await axios.get(`${API_BASE_URL}/sermon-categories`);
-            if (res.data.status === 'success') {
-                categories.value = res.data.categories;
-            }
+            const res = await axios.get(
+                `${REST_URL}/sermons?select=*&slug=eq.${encodeURIComponent(slug)}&limit=1`,
+                { headers: supabaseHeaders() },
+            );
+            const row = (res.data ?? [])[0];
+            return row ? normalizeSermon(row) : null;
         } catch (e) {
-            console.error('fetchCategories error', e);
+            console.warn('fetchBySlug failed', e);
+            return null;
+        }
+    }
+
+    async function recordSermonView(sermon: SermonType) {
+        if (viewedSermonIds.has(sermon.id) || pendingViewSermonIds.has(sermon.id)) return;
+        pendingViewSermonIds.add(sermon.id);
+        try {
+            await axios.post(
+                `${REST_URL}/rpc/increment_sermon_views`,
+                { sermon_slug: sermon.slug },
+                { headers: { ...supabaseHeaders(), 'Content-Type': 'application/json' } },
+            );
+            // The RPC returns void, so the local bump is the only source of the new
+            // number. Best-effort: a failed count never surfaces to the reader.
+            const feedSermon = sermons.value.find((s) => s.id === sermon.id);
+            if (feedSermon) feedSermon.view_count += 1;
+            viewedSermonIds.add(sermon.id);
+        } catch (e) {
+            console.warn('recordSermonView failed', e);
+        } finally {
+            pendingViewSermonIds.delete(sermon.id);
         }
     }
 
     watch(() => page.value, () => getSermons());
-    watch(() => myPage.value, () => getMySermons());
 
     onBeforeMount(async () => {
-        await Promise.all([getSermons(true), fetchCategories(), loadFavorites()]);
+        await Promise.all([getSermons(true), fetchTopics(), loadFavorites()]);
     });
 
     return {
@@ -388,40 +379,24 @@ export const useSermonStore = defineStore('useSermonStore', () => {
         sermons,
         loading,
         page,
-        lastPage,
+        hasMore,
         search,
-        categoryFilter,
+        topicFilter,
         sort,
         getSermons,
-        // My sermons
-        mySermons,
-        myLoading,
-        myPage,
-        myLastPage,
-        mySearch,
-        myStatusFilter,
-        getMySermons,
-        // CRUD
-        createSermon,
-        updateSermon,
-        deleteSermon,
+        // Topics
+        topics,
+        fetchTopics,
+        // Detail
+        fetchBySlug,
         recordSermonView,
-        // Categories
-        categories,
-        fetchCategories,
-        // Tab routing
-        requestedTab,
-        editingSermon,
         // Offline + favorites
         feedStatus,
         favoriteIds,
         favorites,
         loadFavorites,
         toggleFavorite,
-        isFavorite: (id: number) => favoriteIds.value.has(id),
-        // Computed
-        hasMoreFeed: computed(() => page.value < lastPage.value),
-        hasMoreMine: computed(() => myPage.value < myLastPage.value),
+        isFavorite: (id: string) => favoriteIds.value.has(id),
     };
 });
 

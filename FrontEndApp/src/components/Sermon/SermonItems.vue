@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { NIcon, NTag } from 'naive-ui';
-import { useAuthStore } from '../../store/authStore';
 import { DAYJS } from '../../util/dayjs';
-import { Delete, TextAlignJustify } from '@vicons/carbon';
+import { TextAlignJustify } from '@vicons/carbon';
 import { Icon } from '@iconify/vue';
 import { SermonType, useSermonStore } from '../../store/Sermons';
 
-const authStore = useAuthStore();
 const sermonStore = useSermonStore();
 const props = defineProps<{
     sermon: SermonType
@@ -41,26 +39,12 @@ const emit = defineEmits(['showContent', 'publishSermon', 'deleteSermon']);
                     width="20"
                 />
             </button>
-            <div v-if="authStore.user?.id === sermon.created_by" class="absolute top-1 left-1 flex flex-col gap-1">
-                <div v-if="sermon.status !== 'published'" class="bg-orange-700 px-2 rounded-md select-none text-white"
-                     @click.stop="emit('publishSermon', sermon)">
-                    Not Published
-                </div>
-                <div v-else class="bg-green-700 px-2 rounded-md select-none text-white"
-                     @click.stop="emit('publishSermon', sermon, false)">
-                    Published
-                </div>
-                <div class="bg-red-600 px-2 rounded-md select-none text-white" @click.stop="emit('deleteSermon', sermon)">
-                    <NIcon><Delete /></NIcon>
-                    Delete
-                </div>
-            </div>
         </div>
         <div class="mt-2">
             <div class="font-700">{{ sermon.title }}</div>
-            <div class="overflow-hidden overflow-ellipsis whitespace-nowrap">{{ sermon.short_summary }}</div>
+            <div class="overflow-hidden overflow-ellipsis whitespace-nowrap">{{ sermon.summary }}</div>
             <div>
-                <small>{{ DAYJS(sermon.created_at).fromNow() }}</small>
+                <small>{{ DAYJS(sermon.published_at).fromNow() }}</small>
             </div>
             <div class="flex items-center mt-2 gap-2">
                 <NTag v-if="sermon.video_url" :bordered="false" round type="error">
