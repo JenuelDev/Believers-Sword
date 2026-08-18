@@ -48,7 +48,7 @@ watch(
                     <div class="flex-1 min-w-0">
                         <p class="font-semibold text-sm text-[var(--theme-text)]">Sermons</p>
                         <p class="text-xs text-[var(--theme-text-soft)] mt-0.5">
-                            Browse, favorite, and share sermons.
+                            Browse and favorite sermons.
                         </p>
                     </div>
                     <span class="text-[var(--theme-text-soft)] text-lg">&rsaquo;</span>
