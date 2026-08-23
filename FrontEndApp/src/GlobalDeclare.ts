@@ -25,6 +25,7 @@ declare global {
             minimizeWindow: () => Promise<void>;
             getAppScale: () => Promise<number>;
             setAppScale: (scale: number) => Promise<number>;
+            setImmersiveWindowMode: (enabled: boolean) => Promise<void>;
             appReady: () => void;
             setSplashTheme: (payload: { bg: string; text: string; accent: string }) => Promise<void>;
             getAvailableBibles: () => Promise<Array<any>>;
