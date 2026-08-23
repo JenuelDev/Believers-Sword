@@ -307,53 +307,6 @@ declare global {
                 verses: string[];
             } | null>;
 
-            // AI Assistant conversation history
-            getAiConversations: () => Promise<Array<{
-                id: string;
-                title: string;
-                messages: Array<{ role: string; content: string }>;
-                created_at: string;
-                updated_at: string;
-            }>>;
-            getAiConversation: (id: string) => Promise<{
-                id: string;
-                title: string;
-                messages: Array<{ role: string; content: string }>;
-                created_at: string;
-                updated_at: string;
-            } | null>;
-            saveAiConversation: (payload: {
-                id: string;
-                title: string;
-                messages: Array<{ role: string; content: string }>;
-                created_at?: string;
-            }) => Promise<{
-                id: string;
-                title: string;
-                messages: Array<{ role: string; content: string }>;
-                created_at: string;
-                updated_at: string;
-            } | null>;
-            deleteAiConversation: (id: string) => Promise<boolean>;
-
-            // AI insight/sermon local cache (device-local, pruned after 3 days)
-            getAiInsight: (key: string) => Promise<{
-                key: string;
-                mode: string;
-                reference: string;
-                version: string | null;
-                content: string;
-                created_at: string;
-            } | null>;
-            saveAiInsight: (payload: {
-                key: string;
-                mode: string;
-                reference: string;
-                version?: string | null;
-                content: string;
-            }) => Promise<boolean>;
-            pruneAiInsights: () => Promise<boolean>;
-
             // Games — lives (shared 7-life pool)
             gameGetLives: () => Promise<number>;
             gameLoseLife: () => Promise<number>;

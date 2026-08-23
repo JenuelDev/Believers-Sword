@@ -456,24 +456,6 @@ const stub: Window['browserWindow'] = {
     onSyncBeforeQuit: () => { /* no-op */ },
     notifySyncBeforeQuitDone: () => { /* no-op */ },
 
-    // ---------- AI Assistant conversation history (backend; paid feature) ----------
-    getAiConversations: async () => apiFetch('/ai-conversations', [] as any[]),
-    getAiConversation: async (id: string) =>
-        apiFetch(`/ai-conversations/${encodeURIComponent(id)}`, null),
-    saveAiConversation: async (payload) =>
-        apiFetch('/ai-conversations', null, { method: 'POST', body: JSON.stringify(payload) }),
-    deleteAiConversation: async (id: string) => {
-        const res = await apiFetch<boolean | null>(
-            `/ai-conversations/${encodeURIComponent(id)}`, null, { method: 'DELETE' },
-        );
-        return res === true;
-    },
-
-    // ---------- AI insight/sermon cache (local-only convenience; skipped on web — always online) ----------
-    getAiInsight: async () => null,
-    saveAiInsight: async () => false,
-    pruneAiInsights: async () => false,
-
     // ---------- Sermons offline cache + favorites ----------
     //
     // The offline cache stays a no-op: web is always online, so there is

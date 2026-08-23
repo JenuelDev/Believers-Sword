@@ -124,17 +124,6 @@ contextBridge.exposeInMainWorld('browserWindow', {
     getTodayDevotional: (languageCode: string = 'en') => ipcRenderer.invoke('getTodayDevotional', languageCode),
     getDevotionalByDay: (day: number, languageCode: string = 'en') => ipcRenderer.invoke('getDevotionalByDay', day, languageCode),
 
-    // AI Assistant conversation history
-    getAiConversations: () => ipcRenderer.invoke('getAiConversations'),
-    getAiConversation: (id: string) => ipcRenderer.invoke('getAiConversation', id),
-    saveAiConversation: (payload: any) => ipcRenderer.invoke('saveAiConversation', payload),
-    deleteAiConversation: (id: string) => ipcRenderer.invoke('deleteAiConversation', id),
-
-    // AI insight/sermon local cache
-    getAiInsight: (key: string) => ipcRenderer.invoke('getAiInsight', key),
-    saveAiInsight: (payload: any) => ipcRenderer.invoke('saveAiInsight', payload),
-    pruneAiInsights: () => ipcRenderer.invoke('pruneAiInsights'),
-
     // Commentaries
     getCommentaryForVerse: (args: string) => ipcRenderer.invoke('getCommentaryForVerse', JSON.parse(args)),
     getCommentariesForChapter: (args: { version: string; book_number: number; chapter: number }) =>

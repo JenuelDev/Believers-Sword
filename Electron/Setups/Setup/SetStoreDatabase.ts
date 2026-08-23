@@ -40,10 +40,9 @@ export default async () => {
         await cachedSermonsMigration();
         await sermonFavoritesMigration();
 
-        // setup AI Assistant conversation history
+        // Retired AI tables — still created so existing rows survive the
+        // removal of the AI features; nothing reads or writes them.
         await aiConversationsMigration();
-
-        // setup AI insight/sermon local cache
         await aiInsightsMigration();
 
         // setup prayer-streak days

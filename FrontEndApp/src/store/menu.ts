@@ -58,12 +58,6 @@ export const useMenuStore = defineStore('useMenuStore', () => {
             iconDark: renderNIcon(BookStar24Filled),
         },
         {
-            label: 'AI Assistant',
-            key: '/ai-assistant',
-            icon: renderNIcon(Sparkle24Regular),
-            iconDark: renderNIcon(Sparkle24Filled),
-        },
-        {
             label: 'Games',
             key: '/games',
             icon: renderNIcon(Games24Regular),
@@ -98,7 +92,6 @@ export const useMenuStore = defineStore('useMenuStore', () => {
         'grow',
         '/prayer-list',
         '/daily-devotional',
-        '/ai-assistant',
         // '/profile',
         '/settings-page',
         '/donate-page',
@@ -157,8 +150,12 @@ export const useMenuStore = defineStore('useMenuStore', () => {
         // for saved tabs
         let savedLocalTabsKey = session.get(localSavedTabsKey);
         if (savedLocalTabsKey) {
-            if (!savedLocalTabsKey.includes('/ai-assistant')) {
-                savedLocalTabsKey.push('/ai-assistant');
+            // The AI Assistant was removed — strip it from existing saved
+            // tab lists so nobody keeps a tab pointing at a dead route.
+            if (savedLocalTabsKey.includes('/ai-assistant')) {
+                savedLocalTabsKey = savedLocalTabsKey.filter(
+                    (t: string) => t !== '/ai-assistant',
+                );
                 session.set(localSavedTabsKey, savedLocalTabsKey);
             }
             // Games is desktop-only: add it for existing Electron users, and

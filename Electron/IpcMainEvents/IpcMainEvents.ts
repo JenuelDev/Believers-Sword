@@ -20,8 +20,6 @@ import importing from './importing/importing';
 import importCommentary from './importing/importCommentary';
 import exporting from './exporting/exporting';
 import CrossReferences from './CrossReferences/CrossReferences';
-import AiConversations from './AiConversations/AiConversations';
-import AiInsights from './AiInsights/AiInsights';
 import PrayerDays from './PrayerDays/PrayerDays';
 import DevotionDays from './DevotionDays/DevotionDays';
 import Games from './Games/Games';
@@ -90,12 +88,6 @@ export default (BrowserWindow: BrowserWindow) => {
 
     // cross references
     CrossReferences();
-
-    // AI Assistant conversation history
-    AiConversations();
-
-    // AI insight/sermon local cache
-    AiInsights();
 
     // Prayer-streak days
     PrayerDays();

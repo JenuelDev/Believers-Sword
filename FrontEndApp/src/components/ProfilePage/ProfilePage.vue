@@ -28,16 +28,14 @@ const router = useRouter();
 const manageModalOpen = ref(false);
 
 const tierLabel = computed(
-    () => ({ free: 'Free', sync: 'Sync', pro: 'Pro' })[authStore.tier],
+    () => ({ free: 'Free', sync: 'Sync' })[authStore.tier],
 );
 const tierBlurb = computed(() => {
     switch (authStore.tier) {
-        case 'pro':
-            return 'Full access to AI study tools, plus everything in Sync.';
         case 'sync':
-            return 'Your study data syncs across devices. Upgrade to Pro for AI study tools.';
+            return 'Your study data is backed up and synced across your devices.';
         default:
-            return 'Unlock cross-device sync and AI-powered Bible study tools.';
+            return 'Back up your study data and sync it across your devices.';
     }
 });
 
@@ -57,10 +55,9 @@ const renewsLabel = computed(() => {
 
 // Plan cards + prices come from the shared composable (single source of truth,
 // with fallback prices so a price always shows even when offerings aren't loaded).
-const { syncPrice, proPrice } = useSubscriptionPlans();
+const { syncPrice } = useSubscriptionPlans();
 
 const subPrice = computed(() => {
-    if (authStore.tier === 'pro') return `${proPrice.value}/month`;
     if (authStore.tier === 'sync') return `${syncPrice.value}/month`;
     return null;
 });
@@ -1075,7 +1072,7 @@ body.dark .sync-free-notice {
     background: rgba(216, 162, 58, 0.14);
 }
 
-/* ── Subscription card (Subscription / Sync / AI Assistant) ─────────────── */
+/* ── Subscription card (Subscription / Sync) ────────────────────────────── */
 .sub-card {
     border-radius: 18px;
     background: rgba(67, 97, 176, 0.10);

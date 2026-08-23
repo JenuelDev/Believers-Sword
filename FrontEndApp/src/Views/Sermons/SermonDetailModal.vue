@@ -677,7 +677,7 @@ watch(
     font-weight: 700;
 }
 
-/* Rendered Markdown — mirrors Views/AiAssistant/ChatThread.vue's .markdown-body
+/* Rendered Markdown — .markdown-body
    so headings, blockquotes and lists get styled instead of rendering as
    unstyled runs of text. */
 .markdown-body :deep(h2),

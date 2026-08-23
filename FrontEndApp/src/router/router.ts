@@ -9,7 +9,6 @@ import ProfileAccountPage from './../Views/UserProfile/Pages/Profile/Profile.vue
 import UserProfileLayout from './../Views/UserProfile/Profile.vue';
 import CompareVerse from '../Views/CompareVerse/CompareVerse.vue';
 import DailyDevotional from '../Views/DailyDevotional/DailyDevotional.vue';
-import AiAssistant from '../Views/AiAssistant/AiAssistant.vue';
 
 export const routes: Array<RouteRecordRaw> = [
     {
@@ -69,11 +68,6 @@ export const routes: Array<RouteRecordRaw> = [
         name: 'DailyDevotional',
         path: '/daily-devotional',
         component: DailyDevotional,
-    },
-    {
-        name: 'AiAssistant',
-        path: '/ai-assistant',
-        component: AiAssistant,
     },
     {
         // Bible Games — Electron-only (needs bundled game DBs + local progress).

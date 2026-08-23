@@ -7,7 +7,9 @@ import Log from 'electron-log';
  * without spending another AI credit. Keyed by `${mode}:${reference}:${version}`.
  *
  * This is a throwaway cache — entries are pruned after 3 days (see the
- * AiInsights IPC handlers) and are never synced to the backend.
+ * former AiInsights IPC handlers) and were never synced to the backend.
+ * Retained after the AI features were removed from the desktop app so
+ * existing rows survive; nothing reads or writes it any more.
  */
 export default async () => {
     await StoreDB.schema.hasTable('ai_insights').then(async (exists) => {
