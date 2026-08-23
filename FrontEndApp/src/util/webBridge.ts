@@ -456,31 +456,71 @@ const stub: Window['browserWindow'] = {
     onSyncBeforeQuit: () => { /* no-op */ },
     notifySyncBeforeQuitDone: () => { /* no-op */ },
 
-    // ---------- AI Assistant conversation history (backend; paid feature) ----------
-    getAiConversations: async () => apiFetch('/ai-conversations', [] as any[]),
-    getAiConversation: async (id: string) =>
-        apiFetch(`/ai-conversations/${encodeURIComponent(id)}`, null),
-    saveAiConversation: async (payload) =>
-        apiFetch('/ai-conversations', null, { method: 'POST', body: JSON.stringify(payload) }),
-    deleteAiConversation: async (id: string) => {
-        const res = await apiFetch<boolean | null>(
-            `/ai-conversations/${encodeURIComponent(id)}`, null, { method: 'DELETE' },
-        );
-        return res === true;
-    },
-
-    // ---------- AI insight/sermon cache (local-only convenience; skipped on web — always online) ----------
-    getAiInsight: async () => null,
-    saveAiInsight: async () => false,
-    pruneAiInsights: async () => false,
-
-    // ---------- Sermons offline cache + favorites (no-op on web — backend is source of truth) ----------
+    // ---------- Sermons offline cache + favorites ----------
+    //
+    // The offline cache stays a no-op: web is always online, so there is
+    // nothing for it to fall back to.
+    //
+    // Favorites are real on web, unlike every other web write in this file.
+    // Web has no local SQLite and cannot use the sync protocol (util/Sync/sync.ts
+    // runs entirely through window.browserWindow, which is *this* shim), so the
+    // backend is its only store. Sermon BODIES are not in the backend — it keeps
+    // uuids only — so getSermonFavorites returns stub rows and the store
+    // hydrates them from Supabase, exactly as it does for a synced favorite on
+    // desktop.
     replaceCachedSermons: async () => ({ success: false, error: 'Not available on web' }),
     getCachedSermons: async () => [],
-    getSermonFavorites: async () => [],
-    getSermonFavoriteIds: async () => [],
-    addSermonFavorite: async () => ({ success: false, error: 'Not available on web' }),
-    removeSermonFavorite: async () => ({ success: false, error: 'Not available on web' }),
+
+    getSermonFavorites: async () => {
+        const res = await apiFetch<{ data?: Array<{ sermon_id: string }> }>(
+            '/sermon-favorites',
+            {},
+        );
+        return (res.data ?? []).map((row) => ({ id: row.sermon_id }));
+    },
+
+    getSermonFavoriteIds: async () => {
+        const res = await apiFetch<{ data?: Array<{ sermon_id: string }> }>(
+            '/sermon-favorites',
+            {},
+        );
+        return (res.data ?? []).map((row) => row.sermon_id);
+    },
+
+    addSermonFavorite: async (sermon: any) => {
+        if (typeof sermon?.id !== 'string' || !sermon.id) {
+            return { success: false, error: 'Missing sermon id' };
+        }
+        // apiFetch never throws: it returns the fallback on a missing token, a
+        // non-ok response, or a network error. So `null` is the sentinel that
+        // tells a real 200 apart from any of those, and the caller gets the truth.
+        const res = await apiFetch<{ status?: string } | null>(
+            '/sermon-favorites',
+            null,
+            { method: 'POST', body: JSON.stringify({ sermon_id: sermon.id }) },
+        );
+        return res?.status === 'success'
+            ? { success: true }
+            : { success: false, error: 'Failed to save favorite' };
+    },
+
+    // Web has no local store to refresh — the backend only ever holds the
+    // uuid, so there is no payload to persist. loadFavorites only calls this
+    // behind an `isElectron` check; the in-memory favorites list is where a
+    // hydrated body lives on web.
+    refreshSermonFavoritePayload: async () => ({ success: false, error: 'Not available on web' }),
+
+    removeSermonFavorite: async (sermonId: string) => {
+        // Same sentinel reasoning as addSermonFavorite above.
+        const res = await apiFetch<{ status?: string } | null>(
+            `/sermon-favorites/${encodeURIComponent(sermonId)}`,
+            null,
+            { method: 'DELETE' },
+        );
+        return res?.status === 'success'
+            ? { success: true }
+            : { success: false, error: 'Failed to remove favorite' };
+    },
 
     // ---------- Export (TODO: replace with client-side jsPDF/docx libs) ----------
     exportToPdf: async () => { warnOnce('exportToPdf'); return { success: false, error: 'Not yet on web' }; },

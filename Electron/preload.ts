@@ -124,17 +124,6 @@ contextBridge.exposeInMainWorld('browserWindow', {
     getTodayDevotional: (languageCode: string = 'en') => ipcRenderer.invoke('getTodayDevotional', languageCode),
     getDevotionalByDay: (day: number, languageCode: string = 'en') => ipcRenderer.invoke('getDevotionalByDay', day, languageCode),
 
-    // AI Assistant conversation history
-    getAiConversations: () => ipcRenderer.invoke('getAiConversations'),
-    getAiConversation: (id: string) => ipcRenderer.invoke('getAiConversation', id),
-    saveAiConversation: (payload: any) => ipcRenderer.invoke('saveAiConversation', payload),
-    deleteAiConversation: (id: string) => ipcRenderer.invoke('deleteAiConversation', id),
-
-    // AI insight/sermon local cache
-    getAiInsight: (key: string) => ipcRenderer.invoke('getAiInsight', key),
-    saveAiInsight: (payload: any) => ipcRenderer.invoke('saveAiInsight', payload),
-    pruneAiInsights: () => ipcRenderer.invoke('pruneAiInsights'),
-
     // Commentaries
     getCommentaryForVerse: (args: string) => ipcRenderer.invoke('getCommentaryForVerse', JSON.parse(args)),
     getCommentariesForChapter: (args: { version: string; book_number: number; chapter: number }) =>
@@ -193,12 +182,13 @@ contextBridge.exposeInMainWorld('browserWindow', {
     applyPullData: (data: any) => ipcRenderer.invoke('applyPullData', data),
 
     // Sermons offline cache + favorites
-    replaceCachedSermons: (sermons: any[]) => ipcRenderer.invoke('replaceCachedSermons', sermons),
+    replaceCachedSermons: (sermons: any[], limit?: number) => ipcRenderer.invoke('replaceCachedSermons', sermons, limit),
     getCachedSermons: () => ipcRenderer.invoke('getCachedSermons'),
     getSermonFavorites: () => ipcRenderer.invoke('getSermonFavorites'),
     getSermonFavoriteIds: () => ipcRenderer.invoke('getSermonFavoriteIds'),
     addSermonFavorite: (sermon: any) => ipcRenderer.invoke('addSermonFavorite', sermon),
-    removeSermonFavorite: (sermonId: number) => ipcRenderer.invoke('removeSermonFavorite', sermonId),
+    refreshSermonFavoritePayload: (sermon: any) => ipcRenderer.invoke('refreshSermonFavoritePayload', sermon),
+    removeSermonFavorite: (sermonId: string) => ipcRenderer.invoke('removeSermonFavorite', sermonId),
     onSyncBeforeQuit: (cb: () => void) => ipcRenderer.on('app:sync-before-quit', cb),
     notifySyncBeforeQuitDone: () => ipcRenderer.send('app:sync-before-quit-done'),
 

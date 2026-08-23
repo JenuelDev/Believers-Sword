@@ -108,7 +108,6 @@ onMounted(async () => {
     authStore.initAuth();
 
     // Drop AI insight/sermon cache entries older than 3 days (best-effort).
-    void window.browserWindow?.pruneAiInsights?.();
 
     // Load streak days so the Prayer/Devotion nav dots are accurate from launch.
     void prayerStreak.loadDays();

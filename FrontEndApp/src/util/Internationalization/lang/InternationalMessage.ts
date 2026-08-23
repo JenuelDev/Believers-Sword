@@ -179,7 +179,6 @@ export interface InternationalMessageInterface {
     'strongs-kjv-usage'?: string;
     'strongs-not-found'?: string;
     'strongs-loading'?: string;
-    'Submit Sermon': string;
     Submit: string;
 
     "Create Clip Note": string;
@@ -345,7 +344,6 @@ export interface InternationalMessageInterface {
     "help-portal.article.devo-five-steps.title"?: string;
     "help-portal.article.devo-language.title"?: string;
     "help-portal.article.devo-verse-preview.title"?: string;
-    "help-portal.article.create-sermon.title"?: string;
     "help-portal.article.rich-text-editor.title"?: string;
     "help-portal.article.view-sermons.title"?: string;
     "help-portal.article.sign-in-sync.title"?: string;
@@ -525,17 +523,6 @@ export interface InternationalMessageInterface {
     "help-portal.article.devo-verse-preview.step3-label"?: string;
     "help-portal.article.devo-verse-preview.step3-detail"?: string;
     "help-portal.article.devo-verse-preview.tip1"?: string;
-    "help-portal.article.create-sermon.intro"?: string;
-    "help-portal.article.create-sermon.step1-label"?: string;
-    "help-portal.article.create-sermon.step1-detail"?: string;
-    "help-portal.article.create-sermon.step2-label"?: string;
-    "help-portal.article.create-sermon.step2-detail"?: string;
-    "help-portal.article.create-sermon.step3-label"?: string;
-    "help-portal.article.create-sermon.step3-detail"?: string;
-    "help-portal.article.create-sermon.step4-label"?: string;
-    "help-portal.article.create-sermon.step4-detail"?: string;
-    "help-portal.article.create-sermon.step5-label"?: string;
-    "help-portal.article.create-sermon.step5-detail"?: string;
     "help-portal.article.rich-text-editor.intro"?: string;
     "help-portal.article.rich-text-editor.step1-label"?: string;
     "help-portal.article.rich-text-editor.step1-detail"?: string;

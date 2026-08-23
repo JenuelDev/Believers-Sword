@@ -4,8 +4,6 @@ import {
     EraserSegment24Filled,
     TabDesktopMultiple20Regular,
     PaintBrush24Regular,
-    Sparkle24Regular,
-    DocumentText24Regular,
 } from '@vicons/fluent';
 
 interface ContextMenuOption {
@@ -16,25 +14,6 @@ interface ContextMenuOption {
     /** Accent colour for the icon tile (verse actions). */
     color?: string;
 }
-
-/**
- * AI actions, surfaced as their own accented "AI Tools" group with gradient
- * icon tiles and an "AI" badge. Both open the AI result modal.
- */
-export const AiContextMenuOptions: ContextMenuOption[] = [
-    {
-        label: 'AI Insight',
-        description: 'Understand this verse more deeply',
-        icon: Sparkle24Regular,
-        key: 'ai-insight',
-    },
-    {
-        label: 'Generate Sermon',
-        description: 'Draft a sermon outline from this verse',
-        icon: DocumentText24Regular,
-        key: 'ai-sermon',
-    },
-];
 
 /**
  * Primary verse actions, shown as cards with a tinted icon tile + chevron

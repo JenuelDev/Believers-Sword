@@ -1,3 +1,3 @@
 ## Updates
-- Fix import of some modules not recognized two books in the module: 200 and 210
-- Bug Fixes
+- Bug Fixes and Removed Features that are not being used or not useful
+- Fixed Bugs and Improve Performance

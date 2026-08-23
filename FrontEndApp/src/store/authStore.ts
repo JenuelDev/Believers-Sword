@@ -57,7 +57,6 @@ export const useAuthStore = defineStore('authStore', () => {
 
     // AI requires the `ai` service (granted by Pro). The backend also gates
     // every AI request.
-    const isAiEnabled = computed(() => hasService('ai'));
 
     // Sync is a paid feature (the `sync` service, granted by Sync and Pro).
     // Every sync execution path gates on this so sync never runs for an
@@ -68,8 +67,8 @@ export const useAuthStore = defineStore('authStore', () => {
     // Display tier derived from the services, for plan labels/badges/pricing:
     // holds `ai` → Pro, else `sync` → Sync, else Free. Presentation only — all
     // gating uses the services above.
-    const tier = computed<'free' | 'sync' | 'pro'>(() =>
-        hasService('ai') ? 'pro' : hasService('sync') ? 'sync' : 'free',
+    const tier = computed<'free' | 'sync'>(() =>
+        hasService('sync') ? 'sync' : 'free',
     );
 
     // Local avatar cache — base64 data URL of the last uploaded custom picture.
@@ -713,7 +712,6 @@ export const useAuthStore = defineStore('authStore', () => {
         services,
         hasService,
         tier,
-        isAiEnabled,
         isSyncEntitled,
         isAuthenticated,
         syncEnabled,

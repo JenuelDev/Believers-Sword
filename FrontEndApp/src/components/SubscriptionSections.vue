@@ -9,24 +9,23 @@ import { useSubscriptionPlans } from '../composables/useSubscriptionPlans';
 import MobileOnlyNotice from './MobileOnlyNotice.vue';
 
 /**
- * The shared subscription surface — independent Sync and AI Assistant plans,
- * each with feature checklist and a Get/Active state, plus a "Payment method &
- * cancel" link for subscribers. Used both inline on the profile page and inside
- * the Manage-plan dialog so the two stay identical.
+ * The shared subscription surface — the Sync plan with its feature checklist
+ * and a Get/Active state, plus a "Payment method & cancel" link for
+ * subscribers. Used both inline on the profile page and inside the Manage-plan
+ * dialog so the two stay identical.
  */
 const emit = defineEmits<{ purchased: [] }>();
 
 const authStore = useAuthStore();
 const webBilling = useWebBillingStore();
 const message = useMessage();
-const { planCards, syncPrice, proPrice, syncPlan, proPlan } = useSubscriptionPlans();
+const { planCards, syncPrice, syncPlan } = useSubscriptionPlans();
 
 const syncFeatures = computed(() => planCards.value.find((c) => c.key === 'sync')?.features ?? []);
-const aiFeatures = computed(() => planCards.value.find((c) => c.key === 'ai')?.features ?? []);
-const isSubscriber = computed(() => authStore.hasService('sync') || authStore.hasService('ai'));
+const isSubscriber = computed(() => authStore.hasService('sync'));
 
-// Subscribe to a single service (Sync / AI Assistant are independent).
-async function getService(key: 'sync' | 'ai') {
+// Subscribe to a single service.
+async function getService(key: 'sync') {
     if (webBilling.plans.length === 0) await webBilling.loadPlans();
     const card = planCards.value.find((c) => c.key === key);
     if (!card?.plan) {
@@ -107,42 +106,6 @@ async function managePayment() {
         >
             <template #icon><Icon icon="lucide:sparkles" /></template>
             Get Sync · {{ syncPrice }}/mo
-        </NButton>
-    </div>
-
-    <div class="sub-divider" />
-
-    <!-- ── AI Assistant ───────────────────────────────────── -->
-    <div class="sub-section">
-        <div class="sub-head">
-            <Icon icon="lucide:sparkles" class="sub-head__icon" />
-            <span class="sub-head__title">AI Assistant</span>
-            <span class="onoff-chip" :class="authStore.isAiEnabled ? 'is-on' : 'is-off'">
-                <span class="onoff-dot" /> {{ authStore.isAiEnabled ? 'On' : 'Off' }}
-            </span>
-        </div>
-        <p class="sub-blurb">
-            Verse insights, sermon outlines, devotionals, and Bible chat.
-        </p>
-        <ul class="sub-features">
-            <li v-for="f in aiFeatures" :key="f">
-                <Icon icon="lucide:check" /> <span>{{ f }}</span>
-            </li>
-        </ul>
-        <div v-if="authStore.isAiEnabled" class="sync-footer-item is-active">
-            <Icon icon="mdi:check-circle-outline" />
-            <span>Included with your AI Assistant plan — an allowance that refreshes every few hours</span>
-        </div>
-        <NButton
-            v-else
-            type="primary"
-            block
-            :disabled="!webBilling.supported || webBilling.purchasingId !== null"
-            :loading="webBilling.purchasingId === proPlan?.id"
-            @click="getService('ai')"
-        >
-            <template #icon><Icon icon="lucide:sparkles" /></template>
-            Get AI Assistant · {{ proPrice }}/mo
         </NButton>
     </div>
 

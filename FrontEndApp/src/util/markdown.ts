@@ -1,4 +1,4 @@
-// Minimal, safe Markdown → HTML renderer for AI assistant output.
+// Minimal, safe Markdown → HTML renderer for sermon bodies.
 //
 // Supports the subset the assistant produces: ATX headings (#…######),
 // **bold** / *italic*, `inline code`, ordered/unordered lists, blockquotes and

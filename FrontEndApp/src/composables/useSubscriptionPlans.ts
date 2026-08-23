@@ -3,7 +3,7 @@ import { useWebBillingStore, type PlanOption } from '../store/webBillingStore';
 
 /** A plan column rendered in the Choose-your-plan / Manage / gate UIs. */
 export interface PlanCard {
-    key: 'sync' | 'ai';
+    key: 'sync';
     name: string;
     tagline: string;
     /** Display price — the live store price when available, else the fallback. */
@@ -18,20 +18,12 @@ export interface PlanCard {
 // Shown when live offerings aren't available (web checkout disabled / no web
 // key). These mirror the mobile store prices so the cards always show a price.
 const FALLBACK_SYNC_PRICE = '$1.99';
-const FALLBACK_PRO_PRICE = '$5.99';
 
 const SYNC_FEATURES = [
     'Cross-device sync — notes, highlights, bookmarks, prayer lists & more',
     'Cloud backup of your study data',
     'Web app access',
     'No ads',
-];
-
-const AI_FEATURES = [
-    'AI verse insights — contextual insight on any passage',
-    'AI Bible chat — Scripture-focused answers',
-    'Sermon outlines, drafts & devotionals',
-    'A generous AI allowance that refreshes regularly',
 ];
 
 /**
@@ -52,14 +44,7 @@ export function useSubscriptionPlans() {
                     !p.title.toLowerCase().includes('pro'),
             ),
     );
-    const proPlan = computed(
-        () =>
-            webBilling.plans.find((p) => p.id === 'ai_monthly') ??
-            webBilling.plans.find((p) => p.title.toLowerCase().includes('pro')),
-    );
-
     const syncPrice = computed(() => syncPlan.value?.price || FALLBACK_SYNC_PRICE);
-    const proPrice = computed(() => proPlan.value?.price || FALLBACK_PRO_PRICE);
 
     const planCards = computed<PlanCard[]>(() => [
         {
@@ -68,21 +53,11 @@ export function useSubscriptionPlans() {
             tagline: 'Sync & back up your study',
             price: syncPrice.value,
             plan: syncPlan.value,
-            highlight: false,
+            highlight: true,
             badge: '',
             features: SYNC_FEATURES,
         },
-        {
-            key: 'ai',
-            name: 'AI Assistant',
-            tagline: 'AI study tools — insights, chat & sermon prep',
-            price: proPrice.value,
-            plan: proPlan.value,
-            highlight: true,
-            badge: 'Best for study & teaching',
-            features: AI_FEATURES,
-        },
     ]);
 
-    return { planCards, syncPlan, proPlan, syncPrice, proPrice };
+    return { planCards, syncPlan, syncPrice };
 }

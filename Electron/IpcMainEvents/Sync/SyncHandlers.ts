@@ -170,13 +170,12 @@ export const SyncHandlers = (win: BrowserWindow) => {
                     case 'notes':
                         await StoreDB('notes').where('note_id', key).delete();
                         break;
-                    case 'sermon_favorites': {
-                        const id = Number(key);
-                        if (!Number.isNaN(id)) {
-                            await StoreDB('sermon_favorites').where({ sermon_id: id }).delete();
+                    case 'sermon_favorites':
+                        // record_key is the Supabase sermon uuid — never Number() it.
+                        if (key) {
+                            await StoreDB('sermon_favorites').where({ sermon_uuid: key }).delete();
                         }
                         break;
-                    }
                     case 'ai_conversations':
                         await StoreDB('ai_conversations').where({ id: key }).delete();
                         break;
@@ -302,18 +301,22 @@ export const SyncHandlers = (win: BrowserWindow) => {
                 }
             }
 
-            // 6. Sermon favorites — backend only stores sermon_id, so preserve
-            //    any local payload. If we've never cached the sermon, insert a
-            //    placeholder JSON that will be filled in next time the sermon
-            //    is opened or appears in a fetched list.
+            // 6. Sermon favorites — the backend stores only the Supabase uuid,
+            //    so a favorite from another device has no body. Preserve any
+            //    local payload; otherwise insert a stub that the renderer
+            //    hydrates from Supabase (see loadFavorites in store/Sermons.ts).
+            //    The stub shape matches mobile's _applyPullSermonFavorites
+            //    exactly, so both platforms produce identical rows.
             for (const fav of pullData.sermon_favorites ?? []) {
-                const sermonId = fav?.sermon_id;
-                if (typeof sermonId !== 'number') continue;
-                const existing = await StoreDB('sermon_favorites').where({ sermon_id: sermonId }).first();
+                const sermonUuid = fav?.sermon_id;
+                if (typeof sermonUuid !== 'string' || !sermonUuid) continue;
+                const existing = await StoreDB('sermon_favorites')
+                    .where({ sermon_uuid: sermonUuid })
+                    .first();
                 if (existing) continue;
                 await StoreDB('sermon_favorites').insert({
-                    sermon_id: sermonId,
-                    payload: JSON.stringify({ id: sermonId }),
+                    sermon_uuid: sermonUuid,
+                    payload: JSON.stringify({ id: sermonUuid }),
                     created_at: now,
                     updated_at: now,
                 });
