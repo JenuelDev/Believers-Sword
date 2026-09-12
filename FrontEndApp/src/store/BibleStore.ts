@@ -6,6 +6,8 @@ import { setScrollTopState } from '../util/AutoScroll';
 import SESSION from '../util/session';
 import { bibleBooks } from '../util/books';
 import { useSettingStore } from './settingStore';
+import { useModuleStore } from './moduleStore';
+import { migrateReplacedVersions, resolveAvailableVersions } from '../util/bibleVersions';
 import { removeHighlight } from '../util/hilitor';
 import { getBibleService } from '../services/BibleService';
 
@@ -28,11 +30,9 @@ export const useBibleStore = defineStore('useBibleStore', () => {
         chapter_count: 50,
     });
     const clipNoteStore = useClipNoteStore();
+    const moduleStore = useModuleStore();
     const DefaultSelectedVersion = `bs_KJV - 1769.SQLite3`;
     const selectedBibleVersions = ref<Array<string>>([`bs_KJV - 1769.SQLite3`]);
-    // Old default module that has been replaced by bs_KJV - 1769 (now bundled
-    // with Strong's numbers). Persisted selections are migrated on load.
-    const deprecatedVersions = [`King James Version - 1769.SQLite3`];
     const selectedBookNumber = ref<number>(10);
     const selectedChapter = ref<number>(1);
     const selectedVerse = ref<number>(1);
@@ -201,14 +201,40 @@ export const useBibleStore = defineStore('useBibleStore', () => {
     onBeforeMount(async () => {
         const selectedVersions = SESSION.get(StorageSelectedVersions);
         if (selectedVersions) {
-            // Migrate any replaced default module to its bs_* successor.
-            selectedBibleVersions.value = (selectedVersions as string[]).map((v) =>
-                deprecatedVersions.includes(v) ? DefaultSelectedVersion : v,
-            );
+            // Desktop swapped the old default module for its bs_* successor and
+            // deleted the original, so persisted selections are migrated there.
+            // The web app reads whatever the API serves — which has no bs_*
+            // modules — so migrating would point every pane at a missing file.
+            selectedBibleVersions.value = window.isElectron
+                ? migrateReplacedVersions(selectedVersions as string[])
+                : [...(selectedVersions as string[])];
         }
         recallSavedChapter();
         await getVerses();
     });
+
+    // The installed-module list loads asynchronously (IPC on desktop, an API
+    // call on web) and differs per platform. Once it lands, repoint any pane
+    // whose module isn't actually there — the selection is persisted, so
+    // otherwise such a pane keeps showing its raw file name and an empty
+    // chapter through every reload.
+    watch(
+        () => moduleStore.bibleLists,
+        (lists) => {
+            if (!lists.length) return;
+            const resolved = resolveAvailableVersions(
+                selectedBibleVersions.value,
+                lists.map((module: any) => module.file_name),
+            );
+            const unchanged =
+                resolved.length === selectedBibleVersions.value.length &&
+                resolved.every((version, i) => version === selectedBibleVersions.value[i]);
+            if (unchanged) return;
+            selectedBibleVersions.value = resolved;
+            getVerses();
+        },
+        { immediate: true },
+    );
 
     onMounted(async () => {
         AutoScrollSavedPosition();
