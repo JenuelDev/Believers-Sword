@@ -2,6 +2,8 @@ export interface InternationalMessageInterface {
     title: string;
     'read-bible': string;
     Sermons: string;
+    Grow: string;
+    Games: string;
     'Prayer List': string;
     Profile: string;
     About: string;

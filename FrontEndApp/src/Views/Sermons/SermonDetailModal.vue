@@ -38,6 +38,27 @@ const hydrating = ref(false);
 // server-side).
 const notFound = ref(false);
 
+// Declared BEFORE the `immediate: true` watcher below: that watcher's callback
+// runs synchronously during setup() and calls resetScriptureState(), which
+// touches these bindings. Declared after the watcher they are still in the
+// temporal dead zone at that moment — which threw
+// "Cannot access 'scriptureLoadToken' before initialization" on every mount.
+// ── Scripture verse preview ──────────────────────────────────────────────────
+const scriptureLoading = ref(false);
+type ScriptureVerseVersion = {
+    version: string;
+    versionCode: string;
+    text: string;
+};
+type ScriptureVerseGroup = {
+    key: string;
+    refLabel: string;
+    versions: ScriptureVerseVersion[];
+};
+const scriptureVerseGroups = ref<ScriptureVerseGroup[]>([]);
+const scriptureVersionIndexes = ref<Record<string, number>>({});
+let scriptureLoadToken = 0;
+
 function handleUpdateShow(value: boolean) {
     if (!value) emit('close');
 }
@@ -113,22 +134,6 @@ const scriptureLabelText = computed(
 );
 
 const seriesLabel = computed(() => (props.sermon ? sermonSeriesLabel(props.sermon) : ''));
-
-// ── Scripture verse preview ──────────────────────────────────────────────────
-const scriptureLoading = ref(false);
-type ScriptureVerseVersion = {
-    version: string;
-    versionCode: string;
-    text: string;
-};
-type ScriptureVerseGroup = {
-    key: string;
-    refLabel: string;
-    versions: ScriptureVerseVersion[];
-};
-const scriptureVerseGroups = ref<ScriptureVerseGroup[]>([]);
-const scriptureVersionIndexes = ref<Record<string, number>>({});
-let scriptureLoadToken = 0;
 
 function resetScriptureState() {
     scriptureLoadToken += 1;

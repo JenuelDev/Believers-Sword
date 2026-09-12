@@ -19,11 +19,14 @@ export interface PlanCard {
 // key). These mirror the mobile store prices so the cards always show a price.
 const FALLBACK_SYNC_PRICE = '$1.99';
 
+// Web app access is NOT listed here — the browser app is free for any signed-in
+// account. What Sync sells is carrying that data between devices.
+// "No ads" is qualified: ads only ever run in the mobile app, so an unqualified
+// bullet reads as a non-benefit on desktop/web (which have never shown ads).
 const SYNC_FEATURES = [
     'Cross-device sync — notes, highlights, bookmarks, prayer lists & more',
     'Cloud backup of your study data',
-    'Web app access',
-    'No ads',
+    'No ads in the mobile app',
 ];
 
 /**
