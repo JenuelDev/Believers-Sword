@@ -29,6 +29,7 @@ import SettingsModal from './components/Settings/SettingsModal.vue';
 import PlanModal from './components/PlanModal.vue';
 import FeedbackModal from './components/FeedbackModal.vue';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal.vue';
+import DonateModal from './components/Donate/DonateModal.vue';
 import { useAuthStore } from './store/authStore';
 import FlipBook from './Views/ReadBible/FlipBook/FlipBook.vue';
 import VersionSelectModal from './Views/ReadBible/FlipBook/VersionSelectModal.vue';
@@ -211,6 +212,7 @@ onBeforeUnmount(() => {
                     <PlanModal />
                     <FeedbackModal />
                     <KeyboardShortcutsModal />
+                    <DonateModal />
                 </NMessageProvider>
             </NNotificationProvider>
         </NDialogProvider>
