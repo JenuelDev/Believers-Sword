@@ -26,7 +26,6 @@ import { useMainStore } from './store/main';
 import { useI18n } from 'vue-i18n';
 import AboutModal from './components/About/AboutModal.vue';
 import SettingsModal from './components/Settings/SettingsModal.vue';
-import SyncAnnouncementModal from './components/SyncAnnouncementModal.vue';
 import PlanModal from './components/PlanModal.vue';
 import FeedbackModal from './components/FeedbackModal.vue';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal.vue';
@@ -38,7 +37,7 @@ import { computed } from 'vue';
 
 const route = useRoute();
 const router = useRouter();
-const isPopupWindow = computed(() => route.name === 'CompareVerse' || (!window.isElectron && (route.name === 'Login' || route.name === 'SubscriptionRequired')));
+const isPopupWindow = computed(() => route.name === 'CompareVerse' || (!window.isElectron && route.name === 'Login'));
 
 const isMounted = ref(false);
 const authStore = useAuthStore();
@@ -209,7 +208,6 @@ onBeforeUnmount(() => {
                     <SettingsModal />
                     <VersionSelectModal />
                     <FlipBook />
-                    <SyncAnnouncementModal />
                     <PlanModal />
                     <FeedbackModal />
                     <KeyboardShortcutsModal />

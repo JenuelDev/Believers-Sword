@@ -152,31 +152,31 @@ const emptyState = computed(() => {
                     v-for="sermon in sermonStore.sermons"
                     :key="sermon.id"
                     class="sermon-card"
+                    :class="{ 'is-coverless': !sermon.thumbnail_url }"
                     @click="emit('open', sermon)"
                 >
-                    <!-- Thumbnail -->
-                    <div class="card-thumb">
-                        <img v-if="sermon.thumbnail_url" :src="sermon.thumbnail_url" :alt="sermon.title" />
-                        <div v-else class="card-thumb-placeholder">
-                            <Icon icon="mdi:book-cross" class="text-4xl opacity-30" />
-                        </div>
-                        <span v-if="sermon.featured" class="card-cat-badge card-featured-badge">Featured</span>
-                        <div v-if="formatDuration(sermon.duration_seconds)" class="card-media-badge">
-                            {{ formatDuration(sermon.duration_seconds) }}
-                        </div>
-                        <button
-                            type="button"
-                            class="card-fav-btn"
-                            :class="{ active: sermonStore.isFavorite(sermon.id) }"
-                            :title="sermonStore.isFavorite(sermon.id) ? 'Remove from favorites' : 'Add to favorites'"
-                            @click.stop="handleToggleFavorite(sermon)"
-                        >
-                            <Icon :icon="sermonStore.isFavorite(sermon.id) ? 'mdi:star' : 'mdi:star-outline'" />
-                        </button>
+                    <!-- Cover — rendered only when the sermon actually has one.
+                         Most sermons don't, and an empty placeholder was just
+                         dead space; mobile's sermon_card.dart does the same. -->
+                    <div v-if="sermon.thumbnail_url" class="card-thumb">
+                        <img :src="sermon.thumbnail_url" :alt="sermon.title" />
                     </div>
+
+                    <!-- Favourite lives on the card, not the cover, so it still
+                         has a home when there's no cover to overlay. -->
+                    <button
+                        type="button"
+                        class="card-fav-btn"
+                        :class="{ active: sermonStore.isFavorite(sermon.id) }"
+                        :title="sermonStore.isFavorite(sermon.id) ? 'Remove from favorites' : 'Add to favorites'"
+                        @click.stop="handleToggleFavorite(sermon)"
+                    >
+                        <Icon :icon="sermonStore.isFavorite(sermon.id) ? 'mdi:star' : 'mdi:star-outline'" />
+                    </button>
 
                     <!-- Body -->
                     <div class="card-body">
+                        <span v-if="sermon.featured" class="card-featured-badge">Featured</span>
                         <h3 class="card-title">{{ sermon.title }}</h3>
                         <p class="card-summary">{{ sermon.summary }}</p>
                         <div class="card-meta">
@@ -184,6 +184,11 @@ const emptyState = computed(() => {
                             <span v-if="sermon.preached_at || sermon.published_at">
                                 <Icon icon="mdi:calendar-blank-outline" class="inline mr-0.5" />
                                 {{ formatDate(sermon.preached_at || sermon.published_at) }}
+                            </span>
+                            <!-- Duration used to be a badge on the cover. -->
+                            <span v-if="formatDuration(sermon.duration_seconds)">
+                                <Icon icon="mdi:clock-outline" class="inline mr-0.5" />
+                                {{ formatDuration(sermon.duration_seconds) }}
                             </span>
                             <span>
                                 <Icon icon="mdi:eye-outline" class="inline mr-0.5" />
@@ -273,6 +278,8 @@ const emptyState = computed(() => {
 .sermon-card {
     border-radius: 14px;
     overflow: hidden;
+    /* Anchors .card-fav-btn, which now sits on the card rather than the cover. */
+    position: relative;
     background: var(--theme-bg-soft, rgba(255,255,255,0.04));
     border: 1px solid var(--theme-border, rgba(255,255,255,0.07));
     cursor: pointer;
@@ -300,20 +307,10 @@ const emptyState = computed(() => {
     transition: transform 0.2s;
 }
 .sermon-card:hover .card-thumb img { transform: scale(1.04); }
-.card-thumb-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, rgba(111,132,255,0.1), rgba(95,176,255,0.06));
-}
-.card-cat-badge {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-}
+/* Inline chip at the top of the body — it used to be absolutely positioned over
+   the cover, which no longer exists on most cards. */
 .card-featured-badge {
+    align-self: flex-start;
     padding: 2px 8px;
     border-radius: 999px;
     background: rgba(216, 162, 58, 0.9);
@@ -322,20 +319,6 @@ const emptyState = computed(() => {
     font-weight: 800;
     letter-spacing: 0.02em;
     text-transform: uppercase;
-}
-.card-media-badge {
-    position: absolute;
-    bottom: 8px;
-    right: 8px;
-    padding: 3px 9px;
-    border-radius: 999px;
-    background: rgba(0,0,0,0.55);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    font-weight: 700;
-    color: #fff;
 }
 .card-body {
     padding: 12px;
@@ -416,5 +399,21 @@ const emptyState = computed(() => {
 }
 .card-fav-btn.active {
     color: #fbbf24;
+}
+/* With no cover behind it, the solid dark pill reads as a heavy blob on the
+   card surface — go subtle, and keep the title clear of it. */
+.sermon-card.is-coverless .card-fav-btn {
+    background: transparent;
+    color: var(--theme-text-muted, rgba(140, 140, 160, 0.75));
+}
+.sermon-card.is-coverless .card-fav-btn:hover {
+    background: var(--theme-bg-elevated, rgba(127, 127, 127, 0.14));
+}
+.sermon-card.is-coverless .card-fav-btn.active {
+    color: #fbbf24;
+}
+.sermon-card.is-coverless .card-title,
+.sermon-card.is-coverless .card-featured-badge {
+    padding-right: 34px;
 }
 </style>

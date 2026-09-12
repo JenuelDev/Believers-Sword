@@ -4,6 +4,8 @@ const message: InternationalMessageType = {
     title: '信者の剣',
     'read-bible': '聖書を読む',
     Sermons: '説教',
+    Grow: '成長',
+    Games: 'ゲーム',
     'Prayer List': '祈りのリスト',
     Profile: 'プロフィール',
     About: '約',

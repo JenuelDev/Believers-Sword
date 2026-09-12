@@ -4,6 +4,8 @@ const message: InternationalMessageType = {
     title: 'Believers Sword',
     'read-bible': 'Basahin ang Biblia',
     Sermons: 'Mga Sermon',
+    Grow: 'Lumago',
+    Games: 'Mga Laro',
     'Prayer List': 'Listahan ng Panalangin',
     About: 'Tungkol',
     Profile: 'Profile',

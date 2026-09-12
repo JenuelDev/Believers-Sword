@@ -29,22 +29,22 @@ async function handleToggleFavorite(sermon: SermonType) {
                     v-for="sermon in sermonStore.favorites"
                     :key="sermon.id"
                     class="sermon-card"
+                    :class="{ 'is-coverless': !sermon.thumbnail_url }"
                     @click="emit('open', sermon)"
                 >
-                    <div class="card-thumb">
-                        <img v-if="sermon.thumbnail_url" :src="sermon.thumbnail_url" :alt="sermon.title" />
-                        <div v-else class="card-thumb-placeholder">
-                            <Icon icon="mdi:book-cross" class="text-4xl opacity-30" />
-                        </div>
-                        <button
-                            type="button"
-                            class="absolute top-1 right-1 w-32px h-32px rounded-full bg-black/55 flex items-center justify-center text-yellow-400 hover:bg-black/75"
-                            title="Remove from favorites"
-                            @click.stop="handleToggleFavorite(sermon)"
-                        >
-                            <Icon icon="mdi:star" width="20" />
-                        </button>
+                    <!-- Cover only when the sermon has one (see SermonFeed.vue). -->
+                    <div v-if="sermon.thumbnail_url" class="card-thumb">
+                        <img :src="sermon.thumbnail_url" :alt="sermon.title" />
                     </div>
+                    <!-- On the card, not the cover, so it survives a coverless card. -->
+                    <button
+                        type="button"
+                        class="card-unfav-btn"
+                        title="Remove from favorites"
+                        @click.stop="handleToggleFavorite(sermon)"
+                    >
+                        <Icon icon="mdi:star" width="20" />
+                    </button>
                     <div class="card-body">
                         <h3 class="card-title">{{ sermon.title }}</h3>
                         <p class="card-summary">{{ sermon.summary }}</p>
@@ -85,6 +85,8 @@ async function handleToggleFavorite(sermon: SermonType) {
 .sermon-card {
     border-radius: 14px;
     overflow: hidden;
+    /* Anchors .card-unfav-btn, which now sits on the card rather than the cover. */
+    position: relative;
     background: var(--theme-bg-soft, rgba(255,255,255,0.04));
     border: 1px solid var(--theme-border, rgba(255,255,255,0.07));
     cursor: pointer;
@@ -112,13 +114,36 @@ async function handleToggleFavorite(sermon: SermonType) {
     transition: transform 0.2s;
 }
 .sermon-card:hover .card-thumb img { transform: scale(1.04); }
-.card-thumb-placeholder {
-    width: 100%;
-    height: 100%;
+.card-unfav-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fbbf24;
+    border: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, rgba(111,132,255,0.1), rgba(95,176,255,0.06));
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+    z-index: 2;
+}
+.card-unfav-btn:hover {
+    background: rgba(0, 0, 0, 0.78);
+    transform: scale(1.05);
+}
+/* With no cover behind it the solid dark pill reads as a blob on the card. */
+.sermon-card.is-coverless .card-unfav-btn {
+    background: transparent;
+}
+.sermon-card.is-coverless .card-unfav-btn:hover {
+    background: var(--theme-bg-elevated, rgba(127, 127, 127, 0.14));
+}
+.sermon-card.is-coverless .card-title {
+    padding-right: 34px;
 }
 .card-body {
     padding: 12px;

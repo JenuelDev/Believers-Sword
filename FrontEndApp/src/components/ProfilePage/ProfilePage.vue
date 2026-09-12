@@ -469,7 +469,7 @@ onBeforeUnmount(destroyCropper);
                 </div>
                 <div class="profile-status-chip" :class="authStore.syncEnabled ? 'is-enabled' : 'is-disabled'">
                     <Icon :icon="authStore.syncEnabled ? 'mdi:cloud-check' : 'mdi:cloud-off-outline'" />
-                    <span>{{ authStore.syncEnabled ? 'Sync On' : 'Desktop Only' }}</span>
+                    <span>{{ authStore.syncEnabled ? 'Sync On' : 'Sync Off' }}</span>
                 </div>
             </div>
 

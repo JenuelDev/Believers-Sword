@@ -1,7 +1,6 @@
 import { createRouter, createWebHashHistory, createWebHistory, RouteRecordRaw } from 'vue-router';
 import { useAuthStore } from '../store/authStore';
 import PrayerList from './../Views/PrayerList/PrayerList.vue';
-import WebSubscriptionGate from './../Views/UserProfile/Pages/WebSubscriptionGate.vue';
 import AboutPage from './../Views/About/About.vue';
 import HelpPortal from './../Views/HelpPortal/HelpPortal.vue';
 import LoginPage from './../Views/UserProfile/Pages/Login.vue';
@@ -20,13 +19,6 @@ export const routes: Array<RouteRecordRaw> = [
         path: '/login',
         component: LoginPage,
         meta: { public: true },
-    },
-    {
-        // Web-only upsell shown to authenticated Free/lapsed accounts. The web
-        // app is a paid feature (Sync or Pro); the guard below routes here.
-        name: 'SubscriptionRequired',
-        path: '/subscription-required',
-        component: WebSubscriptionGate,
     },
     {
         name: 'PrayerList',
@@ -85,25 +77,22 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
-    // The desktop (Electron) build is the licensed app — no web subscription gate.
+    // The desktop (Electron) build stores everything locally — no account needed.
     if (window.isElectron) return true;
     if (to.meta?.public) return true;
 
-    // Web requires a signed-in account…
+    // Web is free, but still requires a signed-in account: the browser build has
+    // no local database, so the backend IS its storage. Subscription tier is not
+    // checked here — Sync (carrying this data to phone/desktop) is the paid
+    // feature, not web access itself.
     if (!localStorage.getItem('auth_token')) return { name: 'Login' };
 
-    // …and a paid subscription. The web app is a Sync/Pro feature. Ensure the
-    // verified tier is loaded (the guard can run before App.vue's initAuth on a
-    // hard reload), then gate. The backend also enforces this on the data API.
+    // Ensure the session is resolved (the guard can run before App.vue's initAuth
+    // on a hard reload) so a rejected token lands on Login rather than a blank app.
     const auth = useAuthStore();
     await auth.ensureSession();
     if (!auth.token) return { name: 'Login' }; // token rejected (401) while loading
 
-    if (!auth.isSyncEntitled) {
-        return to.name === 'SubscriptionRequired' ? true : { name: 'SubscriptionRequired' };
-    }
-    // Entitled users shouldn't sit on the upsell page.
-    if (to.name === 'SubscriptionRequired') return { name: 'PrayerList' };
     return true;
 });
 
