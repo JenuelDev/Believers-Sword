@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     migrateReplacedVersions,
     resolveAvailableVersions,
-} from './bibleVersions';
+} from './bibleVersions.ts';
 
 const BS_KJV = 'bs_KJV - 1769.SQLite3';
 const KJV_1769 = 'King James Version - 1769.SQLite3';
