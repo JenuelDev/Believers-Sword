@@ -388,6 +388,9 @@ defineExpose({
                     <Redo />
                 </NIcon>
             </NButton>
+            <div v-if="$slots['toolbar-end']" class="ml-auto flex items-center">
+                <slot name="toolbar-end" />
+            </div>
         </div>
         <EditorContent
             :class="{ 'overflow-auto overflowing-div p-2 h-100%': overflow }"

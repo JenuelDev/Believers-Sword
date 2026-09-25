@@ -1,2 +1,2 @@
 ## Updates
-- Syncing Bug Fixes
+- Added ability to export and import notes docx, pdf, md
