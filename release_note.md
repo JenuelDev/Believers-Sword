@@ -1,2 +1,4 @@
 ## Updates
-- Added ability to export and import notes docx, pdf, md
+- Bug Fix
+- UI Bug Fixes
+- Added grow content
