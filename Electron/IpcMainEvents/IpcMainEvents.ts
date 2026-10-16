@@ -24,8 +24,10 @@ import PrayerDays from './PrayerDays/PrayerDays';
 import DevotionDays from './DevotionDays/DevotionDays';
 import Games from './Games/Games';
 import ReminderEvents from './Reminders/Reminders';
+import { InfographicsEvents } from '../Grow/Infographics';
 
 export default (BrowserWindow: BrowserWindow) => {
+    InfographicsEvents(BrowserWindow);
     // Version Events
     ipcVersionEvents();
 

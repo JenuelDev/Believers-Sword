@@ -11,6 +11,7 @@ import { setupPortableMode } from './util/portable';
 import { createWindowState, attachWindowStateManager, saveWindowState } from './util/window';
 import { clearBibleVersionCache } from './Modules/Bible/Common/BibleVersionCache';
 import { registerGameImagesScheme, registerGameImagesProtocol } from './util/gameImagesProtocol';
+import { registerInfographicsScheme, registerInfographicsProtocol } from './Grow/Infographics';
 import { createSplashWindow, closeSplash } from './Windows/SplashWindow';
 import { startedHidden } from './util/autoLaunch';
 import { createAppTray } from './util/appTray';
@@ -20,6 +21,7 @@ import { startReminderScheduler, recordActivity, applyAutoLaunch } from './Remin
 
 // Custom scheme registration must happen before app `ready`.
 registerGameImagesScheme();
+registerInfographicsScheme();
 
 // Suppress EPIPE errors when stdout/stderr pipe is closed (e.g. terminal closed after launch)
 process.stdout.on('error', (err: NodeJS.ErrnoException) => { if (err.code === 'EPIPE') return; });
@@ -225,6 +227,7 @@ app.whenReady().then(async () => {
 
     // Serve 4 Pictures 1 Word images via gameimg:// (after images are seeded).
     registerGameImagesProtocol();
+    registerInfographicsProtocol();
 
     await createWindow();
     if (launchedHidden) currentWindow?.hide();

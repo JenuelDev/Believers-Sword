@@ -115,6 +115,11 @@ function writeStrongsCache(key: string, value: unknown): void {
 }
 
 const stub: Window['browserWindow'] = {
+    listInfographics: async () => [],
+    downloadInfographics: async () => ({
+        success: false, error: 'Offline viewing is available in the desktop and Android apps.',
+    }),
+    onInfographicsProgress: () => () => {},
     // ---------- Window / OS ----------
     versions: async () => ({
         chrome: '', node: '', electron: '', version: '', name: 'web',

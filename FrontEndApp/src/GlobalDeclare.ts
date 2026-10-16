@@ -12,6 +12,15 @@ declare global {
         $message: MessageApiInjection;
         $dialog: DialogApiInjection;
         browserWindow: {
+            listInfographics: () => Promise<Array<{
+                title: string; category: string; fileName: string; size: number; isPdf: boolean; url: string;
+            }>>;
+            downloadInfographics: () => Promise<{
+                success: boolean;
+                resources?: Array<{ title: string; category: string; fileName: string; size: number; isPdf: boolean; url: string }>;
+                error?: string;
+            }>;
+            onInfographicsProgress: (callback: (value: { percent: number | null; phase: string }) => void) => () => void;
             versions: () => Promise<{
                 chrome: string | number;
                 node: string | number;
