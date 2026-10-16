@@ -2,18 +2,20 @@
 import { computed, onBeforeMount, onMounted, ref, watch } from 'vue';
 import { Splitpanes, Pane } from 'splitpanes';
 import { NButton, NCard, NDropdown, NEmpty, NIcon, NInput, NModal, NTabs, NTabPane, useDialog } from 'naive-ui';
-import { Add, TrashCan } from '@vicons/carbon';
+import { Add, Download, OverflowMenuHorizontal, TrashCan } from '@vicons/carbon';
 import Editor from '../../../components/Editor/Editor.vue';
 import CrossReferences from './CrossReferences.vue';
 import Commentaries from './Commentaries.vue';
 import useNoteStore from '../../../store/useNoteStore';
 import SESSION from '../../../util/session';
+import useNoteTransfer, { exportOptions, importOptions } from './useNoteTransfer';
 
 const EditorRef = ref<{
     setContent: Function;
 }>();
 const noteStore = useNoteStore();
 const dialog = useDialog();
+const { busy: transferBusy, handleExport, pickImportFile } = useNoteTransfer();
 const showRenameModal = ref(false);
 const renamingNoteId = ref('');
 const noteNameInput = ref('');
@@ -191,12 +193,21 @@ function changePaneSizes(sizes: Array<any>) {
                         <div
                             class="h-[calc(100%-10px)] pt-5px pl-5px pb-5px flex flex-col gap-2 take-note-list-panel"
                         >
-                            <NButton size="small" type="primary" secondary @click="openCreateNoteDialog()">
-                                <template #icon>
-                                    <NIcon><Add /></NIcon>
-                                </template>
-                                New Note
-                            </NButton>
+                            <div class="flex gap-1">
+                                <NButton size="small" type="primary" secondary class="flex-1" @click="openCreateNoteDialog()">
+                                    <template #icon>
+                                        <NIcon><Add /></NIcon>
+                                    </template>
+                                    New Note
+                                </NButton>
+                                <NDropdown trigger="click" :options="importOptions" @select="pickImportFile">
+                                    <NButton size="small" secondary title="More" :loading="transferBusy">
+                                        <template #icon>
+                                            <NIcon><OverflowMenuHorizontal /></NIcon>
+                                        </template>
+                                    </NButton>
+                                </NDropdown>
+                            </div>
 
                             <div
                                 class="overflow-y-auto overflowing-div hide-note-list-scrollbar h-full flex flex-col gap-1 pr-1"
@@ -261,7 +272,23 @@ function changePaneSizes(sizes: Array<any>) {
                         <div
                             class="h-full min-w-0 rounded-r-md border border-gray-200 dark:border-dark-200 bg-gray-200/55 dark:bg-dark-400 take-note-editor-panel"
                         >
-                            <Editor ref="EditorRef" v-model="noteStore.currentNoteContent" overflow />
+                            <Editor ref="EditorRef" v-model="noteStore.currentNoteContent" overflow>
+                                <template #toolbar-end>
+                                    <NDropdown
+                                        trigger="click"
+                                        placement="bottom-end"
+                                        :options="exportOptions"
+                                        :disabled="!noteStore.selectedNote || transferBusy"
+                                        @select="handleExport"
+                                    >
+                                        <NButton quaternary size="small" title="Export note" :loading="transferBusy">
+                                            <template #icon>
+                                                <NIcon><Download /></NIcon>
+                                            </template>
+                                        </NButton>
+                                    </NDropdown>
+                                </template>
+                            </Editor>
                         </div>
                     </Pane>
                 </Splitpanes>

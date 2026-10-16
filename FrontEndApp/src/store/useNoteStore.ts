@@ -111,11 +111,12 @@ export default defineStore('useNotesStore', () => {
         selectedNoteId.value = noteId;
     }
 
-    function addNote(title?: string) {
+    function addNote(title?: string, content?: string) {
         const note = createDefaultNote();
         const nextNumber = notes.value.length + 1;
         const cleaned = (title ?? '').trim();
         note.title = cleaned ? cleaned.slice(0, 60) : `Note ${nextNumber}`;
+        if (content) note.content = content;
         notes.value = [...notes.value, note];
         selectedNoteId.value = note.id;
     }
