@@ -28,10 +28,6 @@ export const useMenuStore = defineStore('useMenuStore', () => {
     const menuSelected = ref<string>('read-bible');
     const router = useRouter();
     const isRouter = ref<boolean>(false);
-    // Deep-link signal: set to 'sermons' before selecting the 'grow' tab to
-    // land directly on the Sermons screen instead of the hub. Grow.vue
-    // consumes and clears it.
-    const growInitialScreen = ref<'sermons' | null>(null);
     const menuSessionKey = 'menu-session';
     const mainStore = useMainStore();
 
@@ -60,12 +56,6 @@ export const useMenuStore = defineStore('useMenuStore', () => {
             key: '/daily-devotional',
             icon: renderNIcon(BookStar24Regular),
             iconDark: renderNIcon(BookStar24Filled),
-        },
-        {
-            label: 'AI Assistant',
-            key: '/ai-assistant',
-            icon: renderNIcon(Sparkle24Regular),
-            iconDark: renderNIcon(Sparkle24Filled),
         },
         {
             label: 'Games',
@@ -102,10 +92,8 @@ export const useMenuStore = defineStore('useMenuStore', () => {
         'grow',
         '/prayer-list',
         '/daily-devotional',
-        '/ai-assistant',
         // '/profile',
         '/settings-page',
-        '/create-sermon',
         '/donate-page',
         // Games is desktop-only (bundled game DBs + local progress).
         ...(window.isElectron ? ['/games'] : []),
@@ -162,12 +150,12 @@ export const useMenuStore = defineStore('useMenuStore', () => {
         // for saved tabs
         let savedLocalTabsKey = session.get(localSavedTabsKey);
         if (savedLocalTabsKey) {
-            if (!savedLocalTabsKey.includes('/create-sermon')) {
-                savedLocalTabsKey.push('/create-sermon');
-                session.set(localSavedTabsKey, savedLocalTabsKey);
-            }
-            if (!savedLocalTabsKey.includes('/ai-assistant')) {
-                savedLocalTabsKey.push('/ai-assistant');
+            // The AI Assistant was removed — strip it from existing saved
+            // tab lists so nobody keeps a tab pointing at a dead route.
+            if (savedLocalTabsKey.includes('/ai-assistant')) {
+                savedLocalTabsKey = savedLocalTabsKey.filter(
+                    (t: string) => t !== '/ai-assistant',
+                );
                 session.set(localSavedTabsKey, savedLocalTabsKey);
             }
             // Games is desktop-only: add it for existing Electron users, and
@@ -186,6 +174,16 @@ export const useMenuStore = defineStore('useMenuStore', () => {
                 );
                 session.set(localSavedTabsKey, savedLocalTabsKey);
             }
+            // '/create-sermon' was removed when sermons became a read-only
+            // catalog. Strip it from saved tab lists, and move a saved
+            // selection off it below — otherwise a returning user lands on a
+            // route that no longer exists.
+            if (savedLocalTabsKey.includes('/create-sermon')) {
+                savedLocalTabsKey = savedLocalTabsKey.filter(
+                    (t: string) => t !== '/create-sermon'
+                );
+                session.set(localSavedTabsKey, savedLocalTabsKey);
+            }
 
             enableTab.value = session.get(localSavedTabsKey);
         }
@@ -195,6 +193,9 @@ export const useMenuStore = defineStore('useMenuStore', () => {
         if (savedMenu) {
             // Sermons moved under the Grow hub: migrate saved selection.
             if (savedMenu.menuSelected === 'sermons') savedMenu.menuSelected = 'grow';
+            // '/create-sermon' was removed when sermons became a read-only
+            // catalog: move a saved selection off it too.
+            if (savedMenu.menuSelected === '/create-sermon') savedMenu.menuSelected = 'grow';
             await setMenu(savedMenu.menuSelected);
             return;
         }
@@ -203,7 +204,6 @@ export const useMenuStore = defineStore('useMenuStore', () => {
     return {
         menuSelected,
         isRouter,
-        growInitialScreen,
         setMenu,
         setMenuWithNoRoute,
         menuUpperTabs,

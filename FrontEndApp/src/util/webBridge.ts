@@ -12,71 +12,10 @@
  *   - window/OS    -> no-op
  */
 
-const API_BASE = `${import.meta.env.VITE_API_BASE_URL ?? ''}/api`;
+import { apiFetch, fetchPagedList } from './webBridge/http';
+import { createStreakBridge } from './webBridge/streakDays';
+
 const bibleVersesCache = new Map<string, Promise<any[]>>();
-
-async function apiFetch<T>(path: string, fallback: T, options: RequestInit = {}): Promise<T> {
-    try {
-        const token = localStorage.getItem('auth_token');
-        const isPublic = path.startsWith('/bible/') || path.startsWith('/devotional/');
-        if (!isPublic && !token) return fallback;
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(options.headers as Record<string, string> ?? {}),
-        };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        const r = await fetch(`${API_BASE}${path}`, { ...options, headers });
-        if (!r.ok) return fallback;
-        return r.json() as Promise<T>;
-    } catch {
-        return fallback;
-    }
-}
-
-/**
- * Largest `limit` the REST API accepts on paginated list endpoints
- * (clip-notes, highlights). Requests above this 422 with a validation error.
- */
-const API_MAX_LIMIT = 200;
-
-/**
- * Fetch a paginated list endpoint, honoring the caller's requested `limit`.
- *
- * Callers (e.g. the sidebar lists) pass a large `limit` to mean "give me the
- * whole dataset for virtual scrolling", but the API caps `limit` at
- * {@link API_MAX_LIMIT}. When more is requested we page through the endpoint in
- * API-legal chunks and concatenate, stopping once a short page signals the end.
- */
-async function fetchPagedList(
-    path: string,
-    opts: { page?: number; search?: string | null; limit?: number },
-): Promise<any[]> {
-    const requested = Number(opts.limit) || API_MAX_LIMIT;
-    const search = opts.search ?? null;
-
-    // Small request — a single page honoring the caller's page/limit verbatim.
-    if (requested <= API_MAX_LIMIT) {
-        const params = new URLSearchParams({ page: String(opts.page ?? 1), limit: String(requested) });
-        if (search) params.set('search', String(search));
-        return apiFetch(`${path}?${params}`, []);
-    }
-
-    // Large request — walk every page until the dataset is exhausted. The page
-    // cap is a safety net against an unbounded loop, set well above any realistic
-    // per-user record count.
-    const all: any[] = [];
-    const MAX_PAGES = 500;
-    for (let page = 1; page <= MAX_PAGES; page++) {
-        const params = new URLSearchParams({ page: String(page), limit: String(API_MAX_LIMIT) });
-        if (search) params.set('search', String(search));
-        const rows = await apiFetch<any[]>(`${path}?${params}`, []);
-        if (!Array.isArray(rows) || rows.length === 0) break;
-        all.push(...rows);
-        if (rows.length < API_MAX_LIMIT) break;
-    }
-    return all;
-}
 
 function buildBibleVersesPath(version: string, bookNumber: number, chapter: number) {
     const params = new URLSearchParams();
@@ -176,6 +115,11 @@ function writeStrongsCache(key: string, value: unknown): void {
 }
 
 const stub: Window['browserWindow'] = {
+    listInfographics: async () => [],
+    downloadInfographics: async () => ({
+        success: false, error: 'Offline viewing is available in the desktop and Android apps.',
+    }),
+    onInfographicsProgress: () => () => {},
     // ---------- Window / OS ----------
     versions: async () => ({
         chrome: '', node: '', electron: '', version: '', name: 'web',
@@ -302,62 +246,7 @@ const stub: Window['browserWindow'] = {
         return apiFetch(`/prayer-list/${encodeURIComponent(String(key))}`, null, { method: 'DELETE' });
     },
 
-    // ---------- Prayer-streak days ----------
-    // The web build has no dedicated prayer-days REST route, so the streak is
-    // kept in localStorage (per-browser). Electron + mobile persist + sync it.
-    getPrayerDays: async () => {
-        try {
-            const raw = localStorage.getItem('prayer_days');
-            const days: string[] = raw ? JSON.parse(raw) : [];
-            const durRaw = localStorage.getItem('prayer_days_duration');
-            const dur: Record<string, number> = durRaw ? JSON.parse(durRaw) : {};
-            return days.map((day) => ({ day, duration: dur[day] ?? 0 }));
-        } catch {
-            return [];
-        }
-    },
-    markPrayedToday: async (durationSeconds = 0) => {
-        const d = new Date();
-        const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        try {
-            const raw = localStorage.getItem('prayer_days');
-            const days: string[] = raw ? JSON.parse(raw) : [];
-            if (!days.includes(day)) {
-                days.push(day);
-                localStorage.setItem('prayer_days', JSON.stringify(days));
-            }
-            const add = Math.max(0, Math.floor(durationSeconds || 0));
-            if (add > 0) {
-                const durRaw = localStorage.getItem('prayer_days_duration');
-                const dur: Record<string, number> = durRaw ? JSON.parse(durRaw) : {};
-                dur[day] = (dur[day] ?? 0) + add;
-                localStorage.setItem('prayer_days_duration', JSON.stringify(dur));
-            }
-        } catch { /* ignore */ }
-        return day;
-    },
-    getDevotionDays: async () => {
-        try {
-            const raw = localStorage.getItem('devotion_days');
-            const days: string[] = raw ? JSON.parse(raw) : [];
-            return days.map((day) => ({ day }));
-        } catch {
-            return [];
-        }
-    },
-    markDevotionToday: async () => {
-        const d = new Date();
-        const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        try {
-            const raw = localStorage.getItem('devotion_days');
-            const days: string[] = raw ? JSON.parse(raw) : [];
-            if (!days.includes(day)) {
-                days.push(day);
-                localStorage.setItem('devotion_days', JSON.stringify(days));
-            }
-        } catch { /* ignore */ }
-        return day;
-    },
+    ...createStreakBridge(apiFetch),
 
     // ---------- Misc ----------
     updateDownloadProgress: () => { /* no-op listener */ },
@@ -457,31 +346,71 @@ const stub: Window['browserWindow'] = {
     onSyncBeforeQuit: () => { /* no-op */ },
     notifySyncBeforeQuitDone: () => { /* no-op */ },
 
-    // ---------- AI Assistant conversation history (backend; paid feature) ----------
-    getAiConversations: async () => apiFetch('/ai-conversations', [] as any[]),
-    getAiConversation: async (id: string) =>
-        apiFetch(`/ai-conversations/${encodeURIComponent(id)}`, null),
-    saveAiConversation: async (payload) =>
-        apiFetch('/ai-conversations', null, { method: 'POST', body: JSON.stringify(payload) }),
-    deleteAiConversation: async (id: string) => {
-        const res = await apiFetch<boolean | null>(
-            `/ai-conversations/${encodeURIComponent(id)}`, null, { method: 'DELETE' },
-        );
-        return res === true;
-    },
-
-    // ---------- AI insight/sermon cache (local-only convenience; skipped on web — always online) ----------
-    getAiInsight: async () => null,
-    saveAiInsight: async () => false,
-    pruneAiInsights: async () => false,
-
-    // ---------- Sermons offline cache + favorites (no-op on web — backend is source of truth) ----------
+    // ---------- Sermons offline cache + favorites ----------
+    //
+    // The offline cache stays a no-op: web is always online, so there is
+    // nothing for it to fall back to.
+    //
+    // Favorites are real on web, unlike every other web write in this file.
+    // Web has no local SQLite and cannot use the sync protocol (util/Sync/sync.ts
+    // runs entirely through window.browserWindow, which is *this* shim), so the
+    // backend is its only store. Sermon BODIES are not in the backend — it keeps
+    // uuids only — so getSermonFavorites returns stub rows and the store
+    // hydrates them from Supabase, exactly as it does for a synced favorite on
+    // desktop.
     replaceCachedSermons: async () => ({ success: false, error: 'Not available on web' }),
     getCachedSermons: async () => [],
-    getSermonFavorites: async () => [],
-    getSermonFavoriteIds: async () => [],
-    addSermonFavorite: async () => ({ success: false, error: 'Not available on web' }),
-    removeSermonFavorite: async () => ({ success: false, error: 'Not available on web' }),
+
+    getSermonFavorites: async () => {
+        const res = await apiFetch<{ data?: Array<{ sermon_id: string }> }>(
+            '/sermon-favorites',
+            {},
+        );
+        return (res.data ?? []).map((row) => ({ id: row.sermon_id }));
+    },
+
+    getSermonFavoriteIds: async () => {
+        const res = await apiFetch<{ data?: Array<{ sermon_id: string }> }>(
+            '/sermon-favorites',
+            {},
+        );
+        return (res.data ?? []).map((row) => row.sermon_id);
+    },
+
+    addSermonFavorite: async (sermon: any) => {
+        if (typeof sermon?.id !== 'string' || !sermon.id) {
+            return { success: false, error: 'Missing sermon id' };
+        }
+        // apiFetch never throws: it returns the fallback on a missing token, a
+        // non-ok response, or a network error. So `null` is the sentinel that
+        // tells a real 200 apart from any of those, and the caller gets the truth.
+        const res = await apiFetch<{ status?: string } | null>(
+            '/sermon-favorites',
+            null,
+            { method: 'POST', body: JSON.stringify({ sermon_id: sermon.id }) },
+        );
+        return res?.status === 'success'
+            ? { success: true }
+            : { success: false, error: 'Failed to save favorite' };
+    },
+
+    // Web has no local store to refresh — the backend only ever holds the
+    // uuid, so there is no payload to persist. loadFavorites only calls this
+    // behind an `isElectron` check; the in-memory favorites list is where a
+    // hydrated body lives on web.
+    refreshSermonFavoritePayload: async () => ({ success: false, error: 'Not available on web' }),
+
+    removeSermonFavorite: async (sermonId: string) => {
+        // Same sentinel reasoning as addSermonFavorite above.
+        const res = await apiFetch<{ status?: string } | null>(
+            `/sermon-favorites/${encodeURIComponent(sermonId)}`,
+            null,
+            { method: 'DELETE' },
+        );
+        return res?.status === 'success'
+            ? { success: true }
+            : { success: false, error: 'Failed to remove favorite' };
+    },
 
     // ---------- Export (TODO: replace with client-side jsPDF/docx libs) ----------
     exportToPdf: async () => { warnOnce('exportToPdf'); return { success: false, error: 'Not yet on web' }; },

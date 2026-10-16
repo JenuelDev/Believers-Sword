@@ -211,17 +211,6 @@ const articleDefs: Record<string, ArticleDef> = {
         ],
         tipsKeys: ['help-portal.article.devo-verse-preview.tip1'],
     },
-    'create-sermon': {
-        titleKey: 'help-portal.article.create-sermon.title',
-        introKey: 'help-portal.article.create-sermon.intro',
-        steps: [
-            { labelKey: 'help-portal.article.create-sermon.step1-label', detailKey: 'help-portal.article.create-sermon.step1-detail' },
-            { labelKey: 'help-portal.article.create-sermon.step2-label', detailKey: 'help-portal.article.create-sermon.step2-detail' },
-            { labelKey: 'help-portal.article.create-sermon.step3-label', detailKey: 'help-portal.article.create-sermon.step3-detail' },
-            { labelKey: 'help-portal.article.create-sermon.step4-label', detailKey: 'help-portal.article.create-sermon.step4-detail' },
-            { labelKey: 'help-portal.article.create-sermon.step5-label', detailKey: 'help-portal.article.create-sermon.step5-detail' },
-        ],
-    },
     'rich-text-editor': {
         titleKey: 'help-portal.article.rich-text-editor.title',
         introKey: 'help-portal.article.rich-text-editor.intro',
@@ -404,7 +393,7 @@ const categoryDefs: CategoryDef[] = [
         titleKey: 'Sermons',
         descKey: 'help-portal.cat.sermons.desc',
         color: '#0ea5e9',
-        articleSlugs: ['create-sermon', 'rich-text-editor', 'view-sermons'],
+        articleSlugs: ['rich-text-editor', 'view-sermons'],
     },
     {
         icon: 'mdi:cloud-sync',

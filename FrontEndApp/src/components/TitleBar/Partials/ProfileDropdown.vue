@@ -60,8 +60,6 @@ const firstName = computed(() => {
 // Current plan label for the header chip — null for Free (no chip up top).
 const tierLabel = computed(() => {
     switch (authStore.tier) {
-        case 'pro':
-            return 'Pro';
         case 'sync':
             return 'Sync';
         default:

@@ -13,6 +13,7 @@ import {
 } from '@vicons/fluent';
 import { Close } from '@vicons/carbon';
 import HelpMenu from '../Footer/HelpMenu.vue';
+import DonateButton from './Partials/DonateButton.vue';
 import { onBeforeMount, ref } from 'vue';
 import { useThemeStore } from '../../store/theme';
 import SearchBar from '../SearchBar.vue';
@@ -116,6 +117,7 @@ onBeforeMount(async () => {
             <div class="draggable-region flex-grow opacity-0">draggable region</div>
         </div>
         <div class="flex items-center h-full justify-end pr-6px gap-5px">
+            <DonateButton />
             <HelpMenu />
             <ThemeChangerDrawer />
             <ProfileDropdown />

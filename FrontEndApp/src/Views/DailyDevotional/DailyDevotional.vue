@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import { NSpin, NModal, NSteps, NStep, useDialog } from 'naive-ui';
 import { Icon } from '@iconify/vue';
 import { useI18n } from 'vue-i18n';
@@ -7,6 +7,7 @@ import { useBibleStore } from '../../store/BibleStore';
 import { useDevotionStreakStore } from '../../store/devotionStreakStore';
 import { bibleBooks } from '../../util/books';
 import { getBibleService } from '../../services/BibleService';
+import { useDevotionCompletion } from './useDevotionCompletion';
 
 // Maps i18n locale names to ISO codes used in devotionals.db.
 // Falls back to 'en' for any locale not in the DB.
@@ -42,22 +43,14 @@ const dialog = useDialog();
 const devotional = ref<Devotional | null>(null);
 const loading = ref(true);
 const activeStep = ref(0);
-// When true, show ONLY the completion/streak card (today's devotion is done).
-const finished = ref(false);
 const bibleStore = useBibleStore();
 const devotionStreak = useDevotionStreakStore();
 
-// Reaching the final "Go" step completes today's devotion — record it toward
-// the day-streak (idempotent + syncs).
-watch(activeStep, (step) => {
-    if (step === steps.length - 1) devotionStreak.recordTodayCompleted();
-});
-
-// Finish the devotion → collapse to the completion-only view.
-function finishDevotion() {
-    devotionStreak.recordTodayCompleted();
-    finished.value = true;
-}
+// The synced day remains authoritative even when it arrives after mount.
+const { finished, saving, saveError, finishDevotion, readAgain } = useDevotionCompletion(
+    () => devotionStreak.completedToday,
+    () => devotionStreak.recordTodayCompleted(),
+);
 
 // "Start Devotion again" — confirm, then re-open the steps from the beginning.
 function restartDevotion() {
@@ -67,7 +60,7 @@ function restartDevotion() {
         positiveText: t('Yes'),
         negativeText: t('No'),
         onPositiveClick: () => {
-            finished.value = false;
+            readAgain();
             activeStep.value = 0;
         },
     });
@@ -194,9 +187,19 @@ async function loadTodayDevotional() {
 onMounted(() => {
     loadTodayDevotional();
     // If today's devotion is already done, open straight to the completion view.
-    devotionStreak.loadDays().then(() => {
-        if (devotionStreak.completedToday) finished.value = true;
-    });
+    void devotionStreak.loadDays();
+    window.addEventListener('focus', refreshWebDays);
+    window.addEventListener('online', refreshWebDays);
+});
+
+// Web storage is REST-backed, including for accounts without automatic sync.
+function refreshWebDays() {
+    if (!window.isElectron) void devotionStreak.loadDays();
+}
+
+onBeforeUnmount(() => {
+    window.removeEventListener('focus', refreshWebDays);
+    window.removeEventListener('online', refreshWebDays);
 });
 
 watch(locale, loadTodayDevotional);
@@ -260,6 +263,10 @@ watch(locale, loadTodayDevotional);
                     </div>
                 </div>
 
+                <p v-if="saveError" role="alert" class="text-center text-red-500 mb-3">
+                    {{ saveError }}
+                </p>
+
                 <!-- Navigation -->
                 <div class="devo-nav">
                     <button
@@ -282,6 +289,7 @@ watch(locale, loadTodayDevotional);
                     <button
                         v-else
                         class="devo-nav-btn devo-nav-btn-primary"
+                        :disabled="saving"
                         @click="finishDevotion"
                     >
                         <Icon icon="mdi:check-circle" class="text-sm" />
@@ -359,335 +367,4 @@ watch(locale, loadTodayDevotional);
     </div>
 </template>
 
-<style scoped>
-.daily-devotional {
-    font-family: var(--bible-font-family, 'Poppins'), sans-serif;
-}
-
-.devo-container {
-    max-width: 640px;
-    margin: 0 auto;
-    padding: 32px 24px;
-}
-
-/* ---- Header ---- */
-.devo-header {
-    text-align: center;
-    margin-bottom: 32px;
-}
-
-.devo-date {
-    font-size: 12px;
-    opacity: 0.4;
-    margin-bottom: 8px;
-}
-
-.devo-day-badge {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 99px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--primary-color);
-    border: 1px solid color-mix(in srgb, var(--primary-color) 40%, transparent);
-    margin-bottom: 10px;
-}
-
-.devo-title {
-    font-size: 22px;
-    font-weight: 700;
-    line-height: 1.3;
-    margin-bottom: 14px;
-}
-
-.devo-verses {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    justify-content: center;
-}
-
-.verse-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 500;
-    background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-    color: var(--primary-color);
-    border: none;
-    cursor: pointer;
-    transition: all 0.15s;
-}
-
-.verse-chip:hover {
-    background: color-mix(in srgb, var(--primary-color) 20%, transparent);
-}
-
-/* ---- Step Progress Track ---- */
-.devo-steps {
-    margin-bottom: 28px;
-}
-
-/* ---- Content Area ---- */
-.devo-content-area {
-    display: flex;
-    gap: 0;
-    margin-bottom: 20px;
-}
-
-.devo-content-accent {
-    width: 3px;
-    flex-shrink: 0;
-    border-radius: 3px;
-    background: var(--primary-color);
-    opacity: 0.6;
-}
-
-.devo-content-inner {
-    flex: 1;
-    padding: 4px 0 4px 20px;
-}
-
-.devo-step-label {
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--primary-color);
-    margin-bottom: 14px;
-    opacity: 0.8;
-}
-
-.devo-step-body {
-    font-size: 15px;
-    line-height: 1.8;
-    opacity: 0.82;
-}
-
-.devo-step-body :deep(p) {
-    margin-bottom: 14px;
-}
-
-.devo-step-body :deep(p:last-child) {
-    margin-bottom: 0;
-}
-
-.devo-step-body :deep(em) {
-    color: var(--primary-color);
-    font-style: italic;
-}
-
-.devo-step-body :deep(.verse-ref) {
-    display: block;
-    text-align: right;
-    font-size: 12px;
-    opacity: 0.5;
-    margin-top: 6px;
-    font-style: italic;
-}
-
-/* ---- Navigation ---- */
-.devo-nav {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 8px;
-    border-top: 1px solid rgba(128, 128, 128, 0.1);
-}
-
-.devo-nav-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 18px;
-    border-radius: 8px;
-    border: 1px solid rgba(128, 128, 128, 0.2);
-    background: none;
-    color: inherit;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    opacity: 0.6;
-    transition: all 0.15s;
-}
-
-.devo-nav-btn:hover {
-    opacity: 1;
-    border-color: rgba(128, 128, 128, 0.4);
-}
-
-.devo-nav-btn-primary {
-    background: var(--primary-color);
-    border-color: var(--primary-color);
-    color: white;
-    opacity: 1;
-}
-
-.devo-nav-btn-primary:hover {
-    opacity: 0.85;
-    border-color: var(--primary-color);
-}
-
-.devo-finished {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    opacity: 0.6;
-}
-
-/* ---- Completion + day-streak card ---- */
-.devo-complete {
-    margin-top: 24px;
-    padding: 26px 18px 22px;
-    border-radius: 18px;
-    border: 1px solid rgba(128, 128, 128, 0.18);
-    background: color-mix(in srgb, var(--primary-color) 5%, transparent);
-    text-align: center;
-}
-.devo-complete-badge {
-    font-size: 44px;
-    line-height: 1;
-    color: var(--primary-color);
-}
-.devo-complete-title {
-    margin-top: 10px;
-    font-size: 19px;
-    font-weight: 800;
-}
-.devo-complete-sub {
-    margin-top: 6px;
-    font-size: 13px;
-    line-height: 1.6;
-    opacity: 0.7;
-}
-.devo-complete-next {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 14px;
-    padding: 5px 12px;
-    border-radius: 99px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--primary-color);
-    background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-}
-.devo-streak-count {
-    margin-top: 22px;
-    font-size: 46px;
-    font-weight: 900;
-    line-height: 1;
-    color: var(--primary-color);
-}
-.devo-streak-label {
-    margin-top: 2px;
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--primary-color);
-}
-.devo-streak-week {
-    display: flex;
-    justify-content: space-between;
-    gap: 6px;
-    margin-top: 18px;
-}
-.devo-streak-day {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    flex: 1;
-}
-.devo-streak-dow {
-    font-size: 11px;
-    opacity: 0.55;
-}
-.devo-streak-pip {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    border: 1px solid rgba(128, 128, 128, 0.25);
-    font-size: 12px;
-    opacity: 0.85;
-}
-.devo-streak-pip.filled {
-    background: var(--primary-color);
-    border-color: var(--primary-color);
-    color: #fff;
-    opacity: 1;
-}
-.devo-streak-pip.today {
-    border-color: var(--primary-color);
-    border-width: 2px;
-}
-
-.devo-restart {
-    margin-top: 22px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 22px;
-    border-radius: 999px;
-    border: none;
-    background: var(--primary-color);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: filter 0.15s;
-}
-.devo-restart:hover { filter: brightness(1.05); }
-
-/* ---- Verse Preview Modal ---- */
-.verse-preview-list {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-.verse-preview-item {
-    padding-bottom: 14px;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.15);
-}
-
-.verse-preview-item:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
-}
-
-.verse-preview-version {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--primary-color);
-    margin-bottom: 6px;
-    opacity: 0.85;
-}
-
-.verse-preview-text {
-    font-size: 15px;
-    line-height: 1.75;
-    opacity: 0.9;
-}
-
-.verse-preview-text :deep(f),
-.verse-preview-text :deep(s),
-.verse-preview-text :deep(n) {
-    display: none;
-}
-
-.verse-preview-text :deep(pb) {
-    display: block;
-}
-</style>
+<style scoped src="./daily-devotional.css"></style>

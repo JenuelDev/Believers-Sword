@@ -65,17 +65,23 @@ export const useDevotionStreakStore = defineStore('devotionStreakStoreId', () =>
     });
 
     async function loadDays() {
-        const rows = await window.browserWindow.getDevotionDays();
-        days.value = new Set((rows ?? []).map((r) => r.day));
+        try {
+            const rows = await window.browserWindow.getDevotionDays();
+            days.value = new Set((rows ?? []).map((r) => r.day));
+        } catch {
+            // A failed web refresh is not an empty history. Keep known days.
+        }
     }
 
     /** Record today as completed (idempotent) and trigger a sync. */
     async function recordTodayCompleted() {
         const day = await window.browserWindow.markDevotionToday();
-        if (day && !days.value.has(day)) {
+        if (!day) return false;
+        if (!days.value.has(day)) {
             days.value = new Set([...days.value, day]);
             debouncedRunSync();
         }
+        return true;
     }
 
     return { days, completedToday, currentStreak, weekDays, loadDays, recordTodayCompleted };

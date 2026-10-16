@@ -12,6 +12,15 @@ declare global {
         $message: MessageApiInjection;
         $dialog: DialogApiInjection;
         browserWindow: {
+            listInfographics: () => Promise<Array<{
+                title: string; category: string; fileName: string; size: number; isPdf: boolean; url: string;
+            }>>;
+            downloadInfographics: () => Promise<{
+                success: boolean;
+                resources?: Array<{ title: string; category: string; fileName: string; size: number; isPdf: boolean; url: string }>;
+                error?: string;
+            }>;
+            onInfographicsProgress: (callback: (value: { percent: number | null; phase: string }) => void) => () => void;
             versions: () => Promise<{
                 chrome: string | number;
                 node: string | number;
@@ -247,12 +256,13 @@ declare global {
             notifySyncBeforeQuitDone: () => void;
 
             // Sermons offline cache + favorites
-            replaceCachedSermons: (sermons: any[]) => Promise<{ success: boolean; error?: string }>;
+            replaceCachedSermons: (sermons: any[], limit?: number) => Promise<{ success: boolean; error?: string }>;
             getCachedSermons: () => Promise<any[]>;
             getSermonFavorites: () => Promise<any[]>;
-            getSermonFavoriteIds: () => Promise<number[]>;
+            getSermonFavoriteIds: () => Promise<string[]>;
             addSermonFavorite: (sermon: any) => Promise<{ success: boolean; error?: string }>;
-            removeSermonFavorite: (sermonId: number) => Promise<{ success: boolean; error?: string }>;
+            refreshSermonFavoritePayload: (sermon: any) => Promise<{ success: boolean; error?: string }>;
+            removeSermonFavorite: (sermonId: string) => Promise<{ success: boolean; error?: string }>;
 
             // Export
             exportToPdf: (args: { html: string; filename: string }) => Promise<any>;
@@ -306,53 +316,6 @@ declare global {
                 go_action: string;
                 verses: string[];
             } | null>;
-
-            // AI Assistant conversation history
-            getAiConversations: () => Promise<Array<{
-                id: string;
-                title: string;
-                messages: Array<{ role: string; content: string }>;
-                created_at: string;
-                updated_at: string;
-            }>>;
-            getAiConversation: (id: string) => Promise<{
-                id: string;
-                title: string;
-                messages: Array<{ role: string; content: string }>;
-                created_at: string;
-                updated_at: string;
-            } | null>;
-            saveAiConversation: (payload: {
-                id: string;
-                title: string;
-                messages: Array<{ role: string; content: string }>;
-                created_at?: string;
-            }) => Promise<{
-                id: string;
-                title: string;
-                messages: Array<{ role: string; content: string }>;
-                created_at: string;
-                updated_at: string;
-            } | null>;
-            deleteAiConversation: (id: string) => Promise<boolean>;
-
-            // AI insight/sermon local cache (device-local, pruned after 3 days)
-            getAiInsight: (key: string) => Promise<{
-                key: string;
-                mode: string;
-                reference: string;
-                version: string | null;
-                content: string;
-                created_at: string;
-            } | null>;
-            saveAiInsight: (payload: {
-                key: string;
-                mode: string;
-                reference: string;
-                version?: string | null;
-                content: string;
-            }) => Promise<boolean>;
-            pruneAiInsights: () => Promise<boolean>;
 
             // Games — lives (shared 7-life pool)
             gameGetLives: () => Promise<number>;

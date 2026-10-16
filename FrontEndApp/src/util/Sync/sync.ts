@@ -7,7 +7,6 @@ import { usePrayerStreakStore } from '../../store/prayerStreakStore';
 import { useDevotionStreakStore } from '../../store/devotionStreakStore';
 import { useBibleStore } from '../../store/BibleStore';
 import { useClipNoteStore } from '../../store/ClipNotes';
-import { useConversationStore } from '../../store/conversationStore';
 import { useGamesStore } from '../../store/useGamesStore';
 
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/api`;
@@ -188,7 +187,6 @@ function reloadStoresAfterPull() {
     useDevotionStreakStore().loadDays();
     useBibleStore().getChapterHighlights();
     useClipNoteStore().getClipNotes();
-    useConversationStore().loadConversations();
     useGamesStore().refreshAfterSync();
 }
 

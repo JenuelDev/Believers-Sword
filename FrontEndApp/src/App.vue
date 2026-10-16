@@ -26,10 +26,10 @@ import { useMainStore } from './store/main';
 import { useI18n } from 'vue-i18n';
 import AboutModal from './components/About/AboutModal.vue';
 import SettingsModal from './components/Settings/SettingsModal.vue';
-import SyncAnnouncementModal from './components/SyncAnnouncementModal.vue';
 import PlanModal from './components/PlanModal.vue';
 import FeedbackModal from './components/FeedbackModal.vue';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal.vue';
+import DonateModal from './components/Donate/DonateModal.vue';
 import { useAuthStore } from './store/authStore';
 import FlipBook from './Views/ReadBible/FlipBook/FlipBook.vue';
 import ImmersiveReader from './Views/ReadBible/ImmersiveReader/ImmersiveReader.vue';
@@ -40,7 +40,7 @@ import { computed } from 'vue';
 const route = useRoute();
 const router = useRouter();
 const isElectron = Boolean(window.isElectron);
-const isPopupWindow = computed(() => route.name === 'CompareVerse' || (!window.isElectron && (route.name === 'Login' || route.name === 'SubscriptionRequired')));
+const isPopupWindow = computed(() => route.name === 'CompareVerse' || (!window.isElectron && route.name === 'Login'));
 
 const isMounted = ref(false);
 const authStore = useAuthStore();
@@ -110,7 +110,6 @@ onMounted(async () => {
     authStore.initAuth();
 
     // Drop AI insight/sermon cache entries older than 3 days (best-effort).
-    void window.browserWindow?.pruneAiInsights?.();
 
     // Load streak days so the Prayer/Devotion nav dots are accurate from launch.
     void prayerStreak.loadDays();
@@ -213,10 +212,10 @@ onBeforeUnmount(() => {
                     <VersionSelectModal />
                     <FlipBook />
                     <ImmersiveReader v-if="isElectron" />
-                    <SyncAnnouncementModal />
                     <PlanModal />
                     <FeedbackModal />
                     <KeyboardShortcutsModal />
+                    <DonateModal />
                 </NMessageProvider>
             </NNotificationProvider>
         </NDialogProvider>
