@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('browserWindow', {
+    listInfographics: () => ipcRenderer.invoke('infographics:list'),
+    downloadInfographics: () => ipcRenderer.invoke('infographics:download'),
+    onInfographicsProgress: (callback: (value: { percent: number | null; phase: string }) => void) => {
+        const listener = (_event: Electron.IpcRendererEvent, value: { percent: number | null; phase: string }) => callback(value);
+        ipcRenderer.on('infographics:progress', listener);
+        return () => ipcRenderer.removeListener('infographics:progress', listener);
+    },
     minimizeWindow: () => ipcRenderer.invoke('minimizeWindow'),
     maximizeWindow: () => ipcRenderer.invoke('maximizeWindow'),
     closeWindow: () => ipcRenderer.invoke('closeWindow'),
