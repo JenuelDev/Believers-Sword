@@ -4,8 +4,10 @@ import { Icon } from '@iconify/vue';
 import Sermons from '../Sermons/Sermons.vue';
 import Infographics from './Infographics.vue';
 import { useInfographicsDownload } from './useInfographicsDownload';
+import BibleFamilyTree from './BibleFamilyTree.vue';
+import { bibleFamilyTreeNote } from './bibleFamilyTree';
 
-type Screen = 'hub' | 'sermons' | 'infographics';
+type Screen = 'hub' | 'sermons' | 'infographics' | 'familyTree';
 
 const activeScreen = ref<Screen>('hub');
 const downloadState = useInfographicsDownload();
@@ -50,6 +52,19 @@ onMounted(() => {
                         <Icon icon="mdi:arrow-right" class="resource-arrow" />
                         <progress v-if="busy" class="resource-progress" :value="percent ?? undefined" max="1" aria-label="Infographics download progress" />
                     </button>
+                    <button type="button" class="resource-row" @click="activeScreen = 'familyTree'">
+                        <Icon icon="mdi:family-tree" class="resource-icon" />
+                        <span class="resource-copy">
+                            <span class="resource-title">Bible Family Tree</span>
+                            <span class="resource-description">From Adam to Jesus Christ</span>
+                            <span class="resource-note">{{ bibleFamilyTreeNote }}</span>
+                        </span>
+                        <span class="resource-status">
+                            <Icon icon="mdi:check" />
+                            <span>Available offline</span>
+                        </span>
+                        <Icon icon="mdi:arrow-right" class="resource-arrow" />
+                    </button>
                 </div>
             </div>
         </div>
@@ -70,6 +85,7 @@ onMounted(() => {
             </div>
         </div>
         <Infographics v-if="activeScreen === 'infographics'" @back="activeScreen = 'hub'" />
+        <BibleFamilyTree v-if="activeScreen === 'familyTree'" @back="activeScreen = 'hub'" />
     </div>
 </template>
 
@@ -87,6 +103,7 @@ onMounted(() => {
 .resource-copy { min-width: 0; }
 .resource-title { display: block; margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; }
 .resource-description { display: block; margin-top: 4px; color: var(--theme-text-soft); font-size: 12px; line-height: 20px; overflow-wrap: anywhere; }
+.resource-note { display: block; margin-top: 6px; color: var(--theme-text-soft); font-size: 12px; line-height: 18px; font-style: italic; }
 .resource-status { display: flex; align-items: center; justify-content: flex-end; gap: 6px; max-width: 210px; color: var(--theme-text-soft); font-size: 12px; line-height: 20px; }
 .resource-status :deep(svg) { flex-shrink: 0; width: 15px; height: 15px; }
 .resource-arrow { width: 17px; height: 17px; color: var(--theme-text-soft); }

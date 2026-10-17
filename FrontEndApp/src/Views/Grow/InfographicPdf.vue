@@ -77,7 +77,8 @@ onMounted(async () => {
     }
 });
 watch([page, zoom, rotation], () => { void render(); });
-watch(rotation, () => viewport.value?.scrollTo({ left: 0, top: 0, behavior: 'instant' }));
+defineExpose({ goToLastPage: () => { if (total.value) page.value = total.value; } });
+watch([page, rotation], () => viewport.value?.scrollTo({ left: 0, top: 0, behavior: 'instant' }));
 onBeforeUnmount(() => {
     disposed = true;
     generation++;

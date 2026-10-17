@@ -18,6 +18,13 @@ export function registerInfographicsProtocol(): void {
     protocol.handle('infographics', async request => {
         try {
             const url = new URL(request.url);
+            // Bundled Grow PDFs ship in the renderer's dist (FrontEndApp/public); file:// pages cannot fetch them.
+            if (url.hostname === 'bundled' && url.pathname === '/bible-family-tree.pdf') {
+                const data = await fs.readFile(path.join(__dirname, '..', 'content', 'bible-family-tree', 'Bible_Family_Tree.pdf'));
+                return new Response(new Uint8Array(data), { headers: {
+                    'content-type': 'application/pdf', 'access-control-allow-origin': '*',
+                } });
+            }
             if (url.hostname !== 'collection') return new Response('Not found', { status: 404 });
             const name = decodeURIComponent(url.pathname.slice(1));
             validateResourcePath(name);
