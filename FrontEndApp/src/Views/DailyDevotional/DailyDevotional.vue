@@ -249,9 +249,15 @@ watch(locale, loadTodayDevotional);
                         v-for="(step, i) in steps"
                         :key="step.key"
                         :title="t(step.label)"
+                        class="devo-step"
+                        :class="{ 'devo-step-active': i === activeStep }"
                         @click="activeStep = i"
                         style="cursor: pointer"
-                    />
+                    >
+                        <template #icon>
+                            <Icon :icon="i < activeStep ? 'mdi:check' : step.icon" />
+                        </template>
+                    </NStep>
                 </NSteps>
 
                 <!-- Content area -->
