@@ -32,12 +32,14 @@ import KeyboardShortcutsModal from './components/KeyboardShortcutsModal.vue';
 import DonateModal from './components/Donate/DonateModal.vue';
 import { useAuthStore } from './store/authStore';
 import FlipBook from './Views/ReadBible/FlipBook/FlipBook.vue';
+import ImmersiveReader from './Views/ReadBible/ImmersiveReader/ImmersiveReader.vue';
 import VersionSelectModal from './Views/ReadBible/FlipBook/VersionSelectModal.vue';
 import { useRoute, useRouter } from 'vue-router';
 import { computed } from 'vue';
 
 const route = useRoute();
 const router = useRouter();
+const isElectron = Boolean(window.isElectron);
 const isPopupWindow = computed(() => route.name === 'CompareVerse' || (!window.isElectron && route.name === 'Login'));
 
 const isMounted = ref(false);
@@ -209,6 +211,7 @@ onBeforeUnmount(() => {
                     <SettingsModal />
                     <VersionSelectModal />
                     <FlipBook />
+                    <ImmersiveReader v-if="isElectron" />
                     <PlanModal />
                     <FeedbackModal />
                     <KeyboardShortcutsModal />
