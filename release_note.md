@@ -1,4 +1,4 @@
 ## Updates
-- Bug Fix
-- UI Bug Fixes
-- Added grow content
+- Improved Cross Reference Tab
+- Bug Fixes
+- Performance Improvement
