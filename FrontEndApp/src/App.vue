@@ -30,6 +30,7 @@ import PlanModal from './components/PlanModal.vue';
 import FeedbackModal from './components/FeedbackModal.vue';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal.vue';
 import DonateModal from './components/Donate/DonateModal.vue';
+import OnboardingDialog from './components/Onboarding/OnboardingDialog.vue';
 import { useAuthStore } from './store/authStore';
 import FlipBook from './Views/ReadBible/FlipBook/FlipBook.vue';
 import VersionSelectModal from './Views/ReadBible/FlipBook/VersionSelectModal.vue';
@@ -42,6 +43,8 @@ const isPopupWindow = computed(() => route.name === 'CompareVerse' || (!window.i
 
 const isMounted = ref(false);
 const authStore = useAuthStore();
+const canShowOnboarding = computed(() => isMounted.value && !isPopupWindow.value &&
+    (Boolean(window.isElectron) || authStore.isAuthenticated));
 
 // On web: redirect to /login when the token is invalidated (e.g. 401 response)
 watch(() => authStore.isAuthenticated, (authenticated) => {
@@ -213,6 +216,7 @@ onBeforeUnmount(() => {
                     <FeedbackModal />
                     <KeyboardShortcutsModal />
                     <DonateModal />
+                    <OnboardingDialog :eligible="canShowOnboarding" />
                 </NMessageProvider>
             </NNotificationProvider>
         </NDialogProvider>

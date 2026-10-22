@@ -61,7 +61,7 @@ onBeforeUnmount(() => crossRefStore.clear());
 </script>
 
 <template>
-    <section class="cross-reference-panel h-full flex flex-col p-2 gap-2 min-h-0" aria-label="Cross references">
+    <section class="cross-reference-panel relative h-full flex flex-col p-2 gap-2 min-h-0" aria-label="Cross references">
         <div class="text-xs text-gray-500 dark:text-gray-400 shrink-0 flex items-center gap-2">
             <span>
                 Cross References for
@@ -73,26 +73,35 @@ onBeforeUnmount(() => crossRefStore.clear());
             <span v-if="crossRefStore.total" class="opacity-70">({{ crossRefStore.total }})</span>
         </div>
 
-        <NVirtualList
+        <!-- Keep Chromium's native wheel scrolling, as used by the reading
+             panels. Stop propagation before the virtualizer's wheel handler
+             replaces native motion with raw scrollTop jumps. Do not prevent
+             the default action: actual scroll events still update the list. -->
+        <div
             v-if="items.length"
-            ref="virtualList"
-            class="cross-reference-list flex-1 min-h-0"
-            :items="items"
-            :item-size="180"
-            item-resizable
-            :padding-bottom="12"
-            @scroll="checkForNextPage"
-            @resize="checkForNextPage"
+            class="cross-reference-scroll-viewport flex flex-col flex-1 min-h-0 overflow-hidden"
+            @wheel.capture.stop
         >
-            <template #default="{ item }">
-                <CrossReferenceCard :reference="item.reference" :group="item.group" />
-            </template>
-        </NVirtualList>
+            <NVirtualList
+                ref="virtualList"
+                class="cross-reference-list flex-1 min-h-0"
+                :items="items"
+                :item-size="180"
+                item-resizable
+                :padding-bottom="12"
+                @scroll="checkForNextPage"
+                @resize="checkForNextPage"
+            >
+                <template #default="{ item }">
+                    <CrossReferenceCard :reference="item.reference" :group="item.group" />
+                </template>
+            </NVirtualList>
+        </div>
 
-        <div v-if="crossRefStore.isLoading" class="cross-reference-status" role="status">
+        <div v-if="crossRefStore.isLoading" class="cross-reference-status cross-reference-loading" :class="{ 'cross-reference-status-overlay': items.length }" role="status">
             <NSpin size="small" /><span>Loading references...</span>
         </div>
-        <div v-else-if="crossRefStore.error" class="cross-reference-status" role="alert">
+        <div v-else-if="crossRefStore.error" class="cross-reference-status" :class="{ 'cross-reference-status-overlay': items.length }" role="alert">
             <span>{{ crossRefStore.error }}</span>
             <NButton size="tiny" @click="crossRefStore.loadMore()">Retry</NButton>
         </div>
@@ -117,4 +126,18 @@ onBeforeUnmount(() => crossRefStore.clear());
     padding: 8px;
     font-size: 12px;
 }
+.cross-reference-status-overlay {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 32px);
+    z-index: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--theme-border);
+    border-radius: 8px;
+    background: var(--theme-bg-elevated);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+}
+.cross-reference-loading.cross-reference-status-overlay { pointer-events: none; }
 </style>
