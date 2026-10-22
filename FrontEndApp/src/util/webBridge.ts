@@ -14,6 +14,7 @@
 
 import { apiFetch, fetchPagedList } from './webBridge/http';
 import { createStreakBridge } from './webBridge/streakDays';
+import { createCrossReferenceBridge } from './webBridge/crossReferences';
 
 const bibleVersesCache = new Map<string, Promise<any[]>>();
 
@@ -432,23 +433,7 @@ const stub: Window['browserWindow'] = {
         return apiFetch(`/devotional/${day}?${params}`, null);
     },
 
-    getCrossReferences: async (args) => {
-        const params = new URLSearchParams({
-            book_number: String(args.book_number),
-            chapter: String(args.chapter),
-            verse: String(args.verse),
-        });
-        return apiFetch(`/cross-references?${params}`, []);
-    },
-    getVerseText: async (args) => {
-        const { bible_versions, book_number, chapter, verse } = args;
-        const params = new URLSearchParams();
-        (bible_versions as string[]).forEach((v) => params.append('versions[]', v));
-        params.set('book_number', String(book_number));
-        params.set('chapter', String(chapter));
-        params.set('verse', String(verse));
-        return apiFetch(`/bible/verse-text?${params}`, []);
-    },
+    ...createCrossReferenceBridge(),
 
     // ---------- Games (Electron-only — the /games route redirects web users) ----------
     gameGetLives: async () => 7,

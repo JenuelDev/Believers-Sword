@@ -3,7 +3,8 @@ const API_BASE = `${import.meta.env.VITE_API_BASE_URL ?? ''}/api`;
 export async function apiFetch<T>(path: string, fallback: T, options: RequestInit = {}): Promise<T> {
     try {
         const token = localStorage.getItem('auth_token');
-        const isPublic = path.startsWith('/bible/') || path.startsWith('/devotional/');
+        const isPublic = path.startsWith('/bible/') || path.startsWith('/devotional/')
+            || path.startsWith('/cross-references?');
         if (!isPublic && !token) return fallback;
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
