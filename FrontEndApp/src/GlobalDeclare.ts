@@ -274,6 +274,8 @@ declare global {
             writeClipboard: (text: string) => Promise<void>;
 
             // Cross References
+            getCrossReferencePage: (args: import('./util/crossReferences').CrossReferenceRequest) =>
+                Promise<import('./util/crossReferences').CrossReferencePage>;
             getCrossReferences: (args: {
                 book_number: number;
                 chapter: number;

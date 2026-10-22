@@ -210,6 +210,10 @@ contextBridge.exposeInMainWorld('browserWindow', {
     writeClipboard: (text: string) => ipcRenderer.invoke('writeClipboard', text),
 
     // Cross References
+    getCrossReferencePage: (args: {
+        book_number: number; chapter: number; verse: number;
+        bible_versions: string[]; offset?: number; limit?: number;
+    }) => ipcRenderer.invoke('getCrossReferencePage', args),
     getCrossReferences: (args: { book_number: number; chapter: number; verse: number }) =>
         ipcRenderer.invoke('getCrossReferences', args),
     getVerseText: (args: { bible_versions: string[]; book_number: number; chapter: number; verse: number }) =>
