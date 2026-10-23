@@ -4,7 +4,7 @@ export async function apiFetch<T>(path: string, fallback: T, options: RequestIni
     try {
         const token = localStorage.getItem('auth_token');
         const isPublic = path.startsWith('/bible/') || path.startsWith('/devotional/')
-            || path.startsWith('/cross-references?');
+            || path.startsWith('/cross-references?') || path.startsWith('/bible-questions');
         if (!isPublic && !token) return fallback;
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',

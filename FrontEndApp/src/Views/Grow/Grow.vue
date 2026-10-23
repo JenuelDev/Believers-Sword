@@ -5,11 +5,14 @@ import Sermons from '../Sermons/Sermons.vue';
 import Infographics from './Infographics.vue';
 import { useInfographicsDownload } from './useInfographicsDownload';
 import BibleFamilyTree from './BibleFamilyTree.vue';
+import BibleQuestions from './BibleQuestions/BibleQuestions.vue';
 import { bibleFamilyTreeNote } from './bibleFamilyTree';
 
-type Screen = 'hub' | 'sermons' | 'infographics' | 'familyTree';
+type Screen = 'hub' | 'sermons' | 'infographics' | 'questions' | 'familyTree';
 
 const activeScreen = ref<Screen>('hub');
+// Desktop reads the bundled questions.db; the web reads the backend API.
+const isDesktop = Boolean(window.isElectron);
 const downloadState = useInfographicsDownload();
 const { resources, busy, percent, phase, error } = downloadState;
 const infographicCount = computed(() => resources.value.length);
@@ -52,6 +55,18 @@ onMounted(() => {
                         <Icon icon="mdi:arrow-right" class="resource-arrow" />
                         <progress v-if="busy" class="resource-progress" :value="percent ?? undefined" max="1" aria-label="Infographics download progress" />
                     </button>
+                    <button type="button" class="resource-row" @click="activeScreen = 'questions'">
+                        <Icon icon="mdi:comment-question-outline" class="resource-icon" />
+                        <span class="resource-copy">
+                            <span class="resource-title">Bible Questions</span>
+                            <span class="resource-description">Explore questions about God, faith, and the Bible</span>
+                        </span>
+                        <span class="resource-status">
+                            <Icon :icon="isDesktop ? 'mdi:check' : 'mdi:comment-question-outline'" />
+                            <span>{{ isDesktop ? 'Available offline' : 'Browse questions' }}</span>
+                        </span>
+                        <Icon icon="mdi:arrow-right" class="resource-arrow" />
+                    </button>
                     <button type="button" class="resource-row" @click="activeScreen = 'familyTree'">
                         <Icon icon="mdi:family-tree" class="resource-icon" />
                         <span class="resource-copy">
@@ -85,6 +100,7 @@ onMounted(() => {
             </div>
         </div>
         <Infographics v-if="activeScreen === 'infographics'" @back="activeScreen = 'hub'" />
+        <BibleQuestions v-if="activeScreen === 'questions'" @back="activeScreen = 'hub'" />
         <BibleFamilyTree v-if="activeScreen === 'familyTree'" @back="activeScreen = 'hub'" />
     </div>
 </template>

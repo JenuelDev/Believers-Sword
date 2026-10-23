@@ -15,6 +15,7 @@
 import { apiFetch, fetchPagedList } from './webBridge/http';
 import { createStreakBridge } from './webBridge/streakDays';
 import { createCrossReferenceBridge } from './webBridge/crossReferences';
+import { createBibleQuestionBridge } from './webBridge/bibleQuestions';
 
 const bibleVersesCache = new Map<string, Promise<any[]>>();
 
@@ -127,6 +128,9 @@ const stub: Window['browserWindow'] = {
     }),
     isWindowBrowserMaximized: async () => false,
     closeWindow: async () => { warnOnce('closeWindow'); },
+    closeCurrentWindow: async () => { warnOnce('closeCurrentWindow'); },
+    // The web opens questions in a dialog instead of a window.
+    openBibleQuestionWindow: async () => { warnOnce('openBibleQuestionWindow'); },
     maximizeWindow: async () => { warnOnce('maximizeWindow'); },
     minimizeWindow: async () => { warnOnce('minimizeWindow'); },
     onWindowMaximized: () => { warnOnce('onWindowMaximized'); },
@@ -434,6 +438,7 @@ const stub: Window['browserWindow'] = {
     },
 
     ...createCrossReferenceBridge(),
+    ...createBibleQuestionBridge(apiFetch),
 
     // ---------- Games (Electron-only — the /games route redirects web users) ----------
     gameGetLives: async () => 7,

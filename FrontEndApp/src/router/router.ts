@@ -7,6 +7,7 @@ import LoginPage from './../Views/UserProfile/Pages/Login.vue';
 import ProfileAccountPage from './../Views/UserProfile/Pages/Profile/Profile.vue';
 import UserProfileLayout from './../Views/UserProfile/Profile.vue';
 import CompareVerse from '../Views/CompareVerse/CompareVerse.vue';
+import BibleQuestionWindow from '../Views/Grow/BibleQuestions/BibleQuestionWindow.vue';
 import DailyDevotional from '../Views/DailyDevotional/DailyDevotional.vue';
 
 export const routes: Array<RouteRecordRaw> = [
@@ -55,6 +56,13 @@ export const routes: Array<RouteRecordRaw> = [
         name: 'CompareVerse',
         path: '/compare-verse',
         component: CompareVerse,
+    },
+    {
+        // Desktop popup window for one Grow > Bible Question. Static like
+        // CompareVerse so the window doesn't wait on an extra chunk.
+        name: 'BibleQuestion',
+        path: '/bible-question',
+        component: BibleQuestionWindow,
     },
     {
         name: 'DailyDevotional',

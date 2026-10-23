@@ -21,6 +21,16 @@ declare global {
                 error?: string;
             }>;
             onInfographicsProgress: (callback: (value: { percent: number | null; phase: string }) => void) => () => void;
+            getBibleQuestionCategories: () => Promise<string[]>;
+            getBibleQuestionPage: (args: import('./Views/Grow/BibleQuestions/bibleQuestions').BibleQuestionPageArgs) =>
+                Promise<import('./Views/Grow/BibleQuestions/bibleQuestions').BibleQuestionPage>;
+            getBibleQuestionAnswers: (questionId: number) =>
+                Promise<import('./Views/Grow/BibleQuestions/bibleQuestions').BibleAnswer[]>;
+            /** Desktop only: opens (or focuses) the question in its own window. */
+            openBibleQuestionWindow: (question: import('./Views/Grow/BibleQuestions/bibleQuestions').BibleQuestionSummary) =>
+                Promise<void>;
+            /** Closes the popup window that calls it (Compare Verse, Bible Question). */
+            closeCurrentWindow: () => Promise<void>;
             versions: () => Promise<{
                 chrome: string | number;
                 node: string | number;

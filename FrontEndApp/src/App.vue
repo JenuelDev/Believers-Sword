@@ -35,11 +35,16 @@ import { useAuthStore } from './store/authStore';
 import FlipBook from './Views/ReadBible/FlipBook/FlipBook.vue';
 import VersionSelectModal from './Views/ReadBible/FlipBook/VersionSelectModal.vue';
 import { useRoute, useRouter } from 'vue-router';
+import { isPopupHash } from './util/popupWindow';
 import { computed } from 'vue';
 
 const route = useRoute();
 const router = useRouter();
-const isPopupWindow = computed(() => route.name === 'CompareVerse' || (!window.isElectron && route.name === 'Login'));
+// Electron popup windows (Compare Verse, Bible Question) are known from the
+// start URL, before the first navigation resolves.
+const startsAsPopup = isPopupHash(window.location.hash);
+const isPopupWindow = computed(() => startsAsPopup || route.name === 'CompareVerse' || route.name === 'BibleQuestion'
+    || (!window.isElectron && route.name === 'Login'));
 
 const isMounted = ref(false);
 const authStore = useAuthStore();
@@ -107,6 +112,13 @@ onBeforeMount(async () => {
 });
 
 onMounted(async () => {
+    // Popups only show their own content: skip the main window's auth, sync,
+    // streak and reminder start-up work so they open quickly.
+    if (startsAsPopup) {
+        isMounted.value = true;
+        return;
+    }
+
     // Initialize auth (token + user + sync state) on every app launch
     authStore.initAuth();
 
