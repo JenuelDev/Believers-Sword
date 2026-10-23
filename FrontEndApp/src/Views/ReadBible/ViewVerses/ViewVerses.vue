@@ -26,6 +26,7 @@ import PiperModelsModal from '../../../components/Settings/VerseReader/PiperMode
 import FootnotePopover from '../../../components/FootnotePopover/FootnotePopover.vue';
 import StrongsPopover from '../../../components/StrongsPopover/StrongsPopover.vue';
 import { useFlipbookStore } from '../../../store/flipbookStore';
+import { useImmersiveReaderStore } from '../../../store/immersiveReaderStore';
 import { useModuleStore } from '../../../store/moduleStore';
 import { Splitpanes, Pane } from 'splitpanes';
 
@@ -50,6 +51,8 @@ const piperStore = usePiperTTSStore();
 const settingStore = useSettingStore();
 const mainStore = useMainStore();
 const flipbookStore = useFlipbookStore();
+const immersiveReaderStore = useImmersiveReaderStore();
+const isElectron = Boolean(window.isElectron);
 
 const moduleStore = useModuleStore();
 
@@ -983,6 +986,18 @@ onUnmounted(() => {
                 >
                     <template #icon>
                         <Icon icon="mdi:book-open-page-variant" style="font-size: 24px" />
+                    </template>
+                </NButton>
+                <NButton
+                    v-if="isElectron"
+                    size="small"
+                    quaternary
+                    class="flex-shrink-0 mr-4px"
+                    title="Open immersive reader"
+                    @click="immersiveReaderStore.open()"
+                >
+                    <template #icon>
+                        <Icon icon="lucide:focus" style="font-size: 22px" />
                     </template>
                 </NButton>
                 <NButton
