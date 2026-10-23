@@ -1,4 +1,2 @@
 ## Updates
-- Improved Cross Reference Tab
-- Bug Fixes
-- Performance Improvement
+- Add new content in Grow
