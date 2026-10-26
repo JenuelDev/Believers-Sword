@@ -1,5 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import Log from 'electron-log';
+import { applyNotePull } from './notePull';
 import {
     logSyncChange,
     getUnsyncedChanges,
@@ -143,6 +144,7 @@ export const SyncHandlers = (win: BrowserWindow) => {
         };
 
         try {
+            await applyNotePull(StoreDB, pullData);
             // 0. Process deletions from sync_logs
             for (const log of pullData.sync_logs ?? []) {
                 if (log.action !== 'deleted') continue;
@@ -168,7 +170,6 @@ export const SyncHandlers = (win: BrowserWindow) => {
                         await StoreDB('devotion_days').where({ day: key }).delete();
                         break;
                     case 'notes':
-                        await StoreDB('notes').where('note_id', key).delete();
                         break;
                     case 'sermon_favorites':
                         // record_key is the Supabase sermon uuid — never Number() it.
@@ -282,24 +283,7 @@ export const SyncHandlers = (win: BrowserWindow) => {
                 }
             }
 
-            // 5. Notes (one row per note, keyed by note_id)
-            for (const note of pullData.notes ?? []) {
-                const noteId = note.note_id;
-                if (!noteId) continue;
-                const existing = await StoreDB('notes').where('note_id', noteId).first();
-                if (existing) {
-                    await StoreDB('notes').where('note_id', noteId)
-                        .update({ title: note.title ?? '', content: note.content ?? '', updated_at: now });
-                } else {
-                    await StoreDB('notes').insert({
-                        note_id: noteId,
-                        title: note.title ?? '',
-                        content: note.content ?? '',
-                        created_at: now,
-                        updated_at: now,
-                    });
-                }
-            }
+            // Notes are applied transactionally by applyNotePull above.
 
             // 6. Sermon favorites — the backend stores only the Supabase uuid,
             //    so a favorite from another device has no body. Preserve any
@@ -432,7 +416,7 @@ export const SyncHandlers = (win: BrowserWindow) => {
             return { success: true };
         } catch (error) {
             Log.error('Failed to apply pull data:', error);
-            return { success: false, error: String(error) };
+            throw error;
         }
     });
 };

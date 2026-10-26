@@ -12,31 +12,14 @@
  *   - window/OS    -> no-op
  */
 
-import { apiFetch, fetchPagedList } from './webBridge/http';
+import { apiRequest, apiFetch, fetchPagedList } from './webBridge/http';
+import { createBibleVerseLoader } from './webBridge/bibleVerseCache';
+import { createNoteBridge } from './webBridge/notes';
 import { createStreakBridge } from './webBridge/streakDays';
 import { createCrossReferenceBridge } from './webBridge/crossReferences';
 import { createBibleQuestionBridge } from './webBridge/bibleQuestions';
 
-const bibleVersesCache = new Map<string, Promise<any[]>>();
-
-function buildBibleVersesPath(version: string, bookNumber: number, chapter: number) {
-    const params = new URLSearchParams();
-    params.append('versions[]', version);
-    params.set('book_number', String(bookNumber));
-    params.set('chapter', String(chapter));
-
-    return `/bible/verses?${params}`;
-}
-
-function getBibleVersesRows(version: string, bookNumber: number, chapter: number) {
-    const path = buildBibleVersesPath(version, bookNumber, chapter);
-    const cached = bibleVersesCache.get(path);
-    if (cached) return cached;
-
-    const request = apiFetch<any[]>(path, []);
-    bibleVersesCache.set(path, request);
-    return request;
-}
+const getBibleVersesRows = createBibleVerseLoader((path) => apiRequest<any[]>(path));
 
 function mergeVerseRows(target: any[], rows: any[], fallbackVersion: string) {
     rows.forEach((row: any) => {
@@ -147,7 +130,7 @@ const stub: Window['browserWindow'] = {
         const selectedVersions = bible_versions as string[];
         const responses = await Promise.all(
             selectedVersions.map((version) =>
-                getBibleVersesRows(version, book_number, selected_chapter),
+                getBibleVersesRows(version, book_number, selected_chapter).catch(() => []),
             ),
         );
 
@@ -257,13 +240,7 @@ const stub: Window['browserWindow'] = {
     openDonateWindow: () => { warnOnce('openDonateWindow'); },
 
     // ---------- Notes ----------
-    getNotes: async () => apiFetch('/notes', []),
-    upsertNote: async (args: { note_id: string; title: string; content: string }) => {
-        return apiFetch('/notes', null, { method: 'POST', body: JSON.stringify(args) });
-    },
-    deleteNote: async (args: { note_id: string }) => {
-        return apiFetch(`/notes/${encodeURIComponent(args.note_id)}`, null, { method: 'DELETE' });
-    },
+    ...createNoteBridge(apiRequest),
 
     // ---------- Dictionary ----------
     searchDictionary: async () => [],

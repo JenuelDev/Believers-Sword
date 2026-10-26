@@ -1,23 +1,24 @@
 const API_BASE = `${import.meta.env.VITE_API_BASE_URL ?? ''}/api`;
 
+export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const token = localStorage.getItem('auth_token');
+    const isPublic = path.startsWith('/bible/') || path.startsWith('/devotional/')
+        || path.startsWith('/cross-references?') || path.startsWith('/bible-questions');
+    if (!isPublic && !token) throw new Error('Sign in to save your changes.');
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        ...(options.headers as Record<string, string> ?? {}),
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const r = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    if (!r.ok) throw new Error(`Request failed (${r.status}). Please try again.`);
+    return await r.json() as T;
+}
+
 export async function apiFetch<T>(path: string, fallback: T, options: RequestInit = {}): Promise<T> {
-    try {
-        const token = localStorage.getItem('auth_token');
-        const isPublic = path.startsWith('/bible/') || path.startsWith('/devotional/')
-            || path.startsWith('/cross-references?') || path.startsWith('/bible-questions');
-        if (!isPublic && !token) return fallback;
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(options.headers as Record<string, string> ?? {}),
-        };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        const r = await fetch(`${API_BASE}${path}`, { ...options, headers });
-        if (!r.ok) return fallback;
-        return r.json() as Promise<T>;
-    } catch {
-        return fallback;
-    }
+    try { return await apiRequest<T>(path, options); }
+    catch { return fallback; }
 }
 
 /**

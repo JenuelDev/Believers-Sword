@@ -274,6 +274,10 @@ function changePaneSizes(sizes: Array<any>) {
                         >
                             <Editor ref="EditorRef" v-model="noteStore.currentNoteContent" overflow>
                                 <template #toolbar-end>
+                                    <span v-if="noteStore.saveError" role="status" class="flex flex-wrap items-center gap-2 text-xs text-red-600 dark:text-red-300">
+                                        <span>{{ noteStore.saveError }}</span>
+                                        <NButton size="tiny" @click="noteStore.retryPendingSaves()">Retry saving</NButton>
+                                    </span>
                                     <NDropdown
                                         trigger="click"
                                         placement="bottom-end"

@@ -2,66 +2,28 @@ import { ipcMain } from 'electron';
 import Log from 'electron-log';
 import { StoreDB } from '../../DataBase/DataBase';
 import { logSyncChange } from '../../DataBase/SyncDB';
+import { saveNote, removeNote } from './notePersistence';
 
 export default () => {
-    /** Returns all note rows ordered by created_at ASC */
-    ipcMain.handle('getNotes', async () => {
-        return await StoreDB('notes').orderBy('created_at', 'asc').select();
+    ipcMain.handle('getNotes', async () => StoreDB('notes').orderBy('created_at', 'asc').select());
+
+    ipcMain.handle('upsertNote', async (_event, note: { note_id: string; title: string; content: string }) => {
+        try {
+            await saveNote(StoreDB, logSyncChange, note);
+            return { success: true };
+        } catch (error) {
+            Log.error('upsertNote error:', error);
+            throw error;
+        }
     });
 
-    /** Upsert a single note row by note_id */
-    ipcMain.handle(
-        'upsertNote',
-        async (event, { note_id, title, content }: { note_id: string; title: string; content: string }) => {
-            try {
-                const existing = await StoreDB('notes').where('note_id', note_id).first();
-                const now = new Date().toISOString();
-
-                if (existing) {
-                    await StoreDB('notes').where('note_id', note_id).update({
-                        title,
-                        content,
-                        updated_at: now,
-                    });
-                } else {
-                    await StoreDB('notes').insert({
-                        note_id,
-                        title,
-                        content,
-                        created_at: now,
-                        updated_at: now,
-                    });
-                }
-
-                await logSyncChange({
-                    table_name: 'notes',
-                    record_key: note_id,
-                    action: existing ? 'updated' : 'created',
-                    payload: { note_id, title, content },
-                    synced: 0,
-                });
-            } catch (e) {
-                Log.error('upsertNote error:', e);
-            }
+    ipcMain.handle('deleteNote', async (_event, { note_id }: { note_id: string }) => {
+        try {
+            await removeNote(StoreDB, logSyncChange, note_id);
+            return { success: true };
+        } catch (error) {
+            Log.error('deleteNote error:', error);
+            throw error;
         }
-    );
-
-    /** Delete a single note row by note_id */
-    ipcMain.handle(
-        'deleteNote',
-        async (event, { note_id }: { note_id: string }) => {
-            try {
-                await StoreDB('notes').where('note_id', note_id).delete();
-                await logSyncChange({
-                    table_name: 'notes',
-                    record_key: note_id,
-                    action: 'deleted',
-                    payload: { note_id },
-                    synced: 0,
-                });
-            } catch (e) {
-                Log.error('deleteNote error:', e);
-            }
-        }
-    );
+    });
 };
