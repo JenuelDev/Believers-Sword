@@ -16,6 +16,7 @@ import { apiRequest, apiFetch, fetchPagedList } from './webBridge/http';
 import { createBibleVerseLoader } from './webBridge/bibleVerseCache';
 import { createNoteBridge } from './webBridge/notes';
 import { createStreakBridge } from './webBridge/streakDays';
+import { createDevotionalBridge } from './webBridge/devotional';
 import { createCrossReferenceBridge } from './webBridge/crossReferences';
 import { createBibleQuestionBridge } from './webBridge/bibleQuestions';
 
@@ -403,17 +404,10 @@ const stub: Window['browserWindow'] = {
     // ---------- Clipboard ----------
     writeClipboard: async (text: string) => { await navigator.clipboard.writeText(text); },
 
-    // ---------- Cross References ----------
     // ---------- Devotional ----------
-    getTodayDevotional: async (languageCode: string = 'en') => {
-        const params = new URLSearchParams({ lang: languageCode });
-        return apiFetch(`/devotional/today?${params}`, null);
-    },
-    getDevotionalByDay: async (day: number, languageCode: string = 'en') => {
-        const params = new URLSearchParams({ lang: languageCode });
-        return apiFetch(`/devotional/${day}?${params}`, null);
-    },
+    ...createDevotionalBridge(apiFetch),
 
+    // ---------- Cross References ----------
     ...createCrossReferenceBridge(),
     ...createBibleQuestionBridge(apiFetch),
 
