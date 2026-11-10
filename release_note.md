@@ -1,2 +1,3 @@
 ## Updates
-- Add new content in Grow
+- Fix Sync for Free Version, always pull data.
+- Bug Fixes

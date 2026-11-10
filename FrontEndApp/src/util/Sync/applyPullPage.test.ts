@@ -19,3 +19,16 @@ test('only a persisted final page advances the cursor', async () => {
     await applyPullPage(bridge, { has_more: false, last_sync_timestamp: 'new' });
     assert.equal(cursor, 'new');
 });
+
+test('protected pending edits keep the cursor retryable until upload', async () => {
+    let cursor = 'previous';
+    let pending = true;
+    const bridge = { applyPullData: async () => ({ success: true, hasPendingChanges: pending }),
+        updateLastSyncTimestamp: async (value: string) => { cursor = value; } };
+    const page = { has_more: false, last_sync_timestamp: 'new' };
+    await applyPullPage(bridge, page);
+    assert.equal(cursor, 'previous');
+    pending = false;
+    await applyPullPage(bridge, page);
+    assert.equal(cursor, 'new');
+});

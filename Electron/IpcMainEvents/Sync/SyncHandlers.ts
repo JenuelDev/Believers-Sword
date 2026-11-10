@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import Log from 'electron-log';
 import { applyNotePull } from './notePull';
+import { filterPendingPull, pendingPullTables } from './pendingPull';
 import {
     logSyncChange,
     getUnsyncedChanges,
@@ -144,276 +145,280 @@ export const SyncHandlers = (win: BrowserWindow) => {
         };
 
         try {
-            await applyNotePull(StoreDB, pullData);
-            // 0. Process deletions from sync_logs
-            for (const log of pullData.sync_logs ?? []) {
-                if (log.action !== 'deleted') continue;
-                const key: string | undefined = log.record_key;
-                if (!key) continue;
-                switch (log.table_name) {
-                    case 'bookmarks':
-                        await StoreDB('bookmarks').where({ key }).delete();
-                        break;
-                    case 'highlights':
-                        await StoreDB('highlights').where({ key }).delete();
-                        break;
-                    case 'clip_notes':
-                        await StoreDB('clip_notes').where({ key }).delete();
-                        break;
-                    case 'prayer_lists':
-                        await StoreDB('prayer_lists').where({ key }).delete();
-                        break;
-                    case 'prayer_days':
-                        await StoreDB('prayer_days').where({ day: key }).delete();
-                        break;
-                    case 'devotion_days':
-                        await StoreDB('devotion_days').where({ day: key }).delete();
-                        break;
-                    case 'notes':
-                        break;
-                    case 'sermon_favorites':
-                        // record_key is the Supabase sermon uuid — never Number() it.
-                        if (key) {
-                            await StoreDB('sermon_favorites').where({ sermon_uuid: key }).delete();
-                        }
-                        break;
-                    case 'ai_conversations':
-                        await StoreDB('ai_conversations').where({ id: key }).delete();
-                        break;
-                }
-            }
-
-            // 1. Bookmarks
-            for (const bm of pullData.bookmarks ?? []) {
-                const existing = await StoreDB('bookmarks').where({ key: bm.key }).first();
-                if (existing) {
-                    await StoreDB('bookmarks').where({ key: bm.key })
-                        .update({ book_number: bm.book_number, chapter: bm.chapter, verse: bm.verse, updated_at: now });
-                } else {
-                    await StoreDB('bookmarks').insert({
-                        key: bm.key,
-                        book_number: bm.book_number, chapter: bm.chapter, verse: bm.verse,
-                        created_at: now, updated_at: now,
-                    });
-                }
-            }
-
-            // 2. Highlights
-            for (const hl of pullData.highlights ?? []) {
-                const existing = await StoreDB('highlights').where({ key: hl.key }).first();
-                if (existing) {
-                    await StoreDB('highlights').where({ key: hl.key })
-                        .update({ book_number: hl.book_number, chapter: hl.chapter, verse: hl.verse, content: hl.content, updated_at: now });
-                } else {
-                    await StoreDB('highlights').insert({
-                        key: hl.key,
-                        book_number: hl.book_number, chapter: hl.chapter, verse: hl.verse, content: hl.content,
-                        created_at: now, updated_at: now,
-                    });
-                }
-            }
-
-            // 3. Clip notes
-            for (const cn of pullData.clip_notes ?? []) {
-                const existing = await StoreDB('clip_notes').where({ key: cn.key }).first();
-                if (existing) {
-                    await StoreDB('clip_notes').where({ key: cn.key })
-                        .update({ book_number: cn.book_number, chapter: cn.chapter, verse: cn.verse, content: cn.content, color: cn.color, updated_at: now });
-                } else {
-                    await StoreDB('clip_notes').insert({
-                        key: cn.key,
-                        book_number: cn.book_number, chapter: cn.chapter, verse: cn.verse,
-                        content: cn.content, color: cn.color ?? '#FFD26A',
-                        created_at: now, updated_at: now,
-                    });
-                }
-            }
-
-            // 4. Prayer lists
-            for (const pl of pullData.prayer_lists ?? []) {
-                // The authoritative original creation time, when the server has it.
-                const clientCreatedAt = pl.client_created_at ?? null;
-                const existing = await StoreDB('prayer_lists').where('key', pl.key).first();
-                if (existing) {
-                    const update: any = { title: pl.title, content: pl.content, group: pl.group, index: pl.index, status: pl.status, updated_at: now };
-                    // Only heal created_at from the authoritative client value; never
-                    // let a server insert-time overwrite a correct local created_at.
-                    if (clientCreatedAt) update.created_at = clientCreatedAt;
-                    await StoreDB('prayer_lists').where('key', pl.key).update(update);
-                } else {
-                    // New local row: prefer client created_at, fall back to server time, then now.
-                    const createdAt = clientCreatedAt ?? pl.created_at ?? now;
-                    await StoreDB('prayer_lists').insert({
-                        key: pl.key, title: pl.title, content: pl.content,
-                        group: pl.group, index: pl.index, status: pl.status,
-                        created_at: createdAt, updated_at: now,
-                    });
-                }
-            }
-
-            // 4b. Prayer-streak days (union-merged). Per-day `duration` (total
-            //     prayer seconds) is merged as a MAX so the larger total wins —
-            //     idempotent, never double-counts on re-sync.
-            for (const pd of pullData.prayer_days ?? []) {
-                if (!pd.day) continue;
-                const incoming = Number(pd.duration ?? 0) || 0;
-                const existing = await StoreDB('prayer_days').where('day', pd.day).first();
-                if (!existing) {
-                    await StoreDB('prayer_days').insert({
-                        day: pd.day,
-                        duration: incoming,
-                        created_at: pd.created_at ?? now,
-                        updated_at: pd.updated_at ?? now,
-                    });
-                } else if (incoming > (existing.duration ?? 0)) {
-                    await StoreDB('prayer_days').where('day', pd.day).update({ duration: incoming, updated_at: now });
-                }
-            }
-
-            // 4c. Devotion-streak days (created-only, idempotent union)
-            for (const dd of pullData.devotion_days ?? []) {
-                if (!dd.day) continue;
-                const existing = await StoreDB('devotion_days').where('day', dd.day).first();
-                if (!existing) {
-                    await StoreDB('devotion_days').insert({
-                        day: dd.day,
-                        created_at: dd.created_at ?? now,
-                        updated_at: dd.updated_at ?? now,
-                    });
-                }
-            }
-
-            // Notes are applied transactionally by applyNotePull above.
-
-            // 6. Sermon favorites — the backend stores only the Supabase uuid,
-            //    so a favorite from another device has no body. Preserve any
-            //    local payload; otherwise insert a stub that the renderer
-            //    hydrates from Supabase (see loadFavorites in store/Sermons.ts).
-            //    The stub shape matches mobile's _applyPullSermonFavorites
-            //    exactly, so both platforms produce identical rows.
-            for (const fav of pullData.sermon_favorites ?? []) {
-                const sermonUuid = fav?.sermon_id;
-                if (typeof sermonUuid !== 'string' || !sermonUuid) continue;
-                const existing = await StoreDB('sermon_favorites')
-                    .where({ sermon_uuid: sermonUuid })
-                    .first();
-                if (existing) continue;
-                await StoreDB('sermon_favorites').insert({
-                    sermon_uuid: sermonUuid,
-                    payload: JSON.stringify({ id: sermonUuid }),
-                    created_at: now,
-                    updated_at: now,
-                });
-            }
-
-            // 7. AI conversations — keyed by the client conversation id. The
-            //    server stores messages as a JSON string in `messages`; keep it
-            //    verbatim so the renderer can parse it the same way it saved it.
-            for (const conv of pullData.ai_conversations ?? []) {
-                const id: string | undefined = conv?.conversation_id ?? conv?.id;
-                if (!id) continue;
-                const messages = typeof conv.messages === 'string'
-                    ? conv.messages
-                    : JSON.stringify(conv.messages ?? []);
-                const title = conv.title ?? 'New chat';
-                const existing = await StoreDB('ai_conversations').where({ id }).first();
-                if (existing) {
-                    await StoreDB('ai_conversations').where({ id })
-                        .update({ title, messages, deleted: 0, updated_at: now });
-                } else {
-                    await StoreDB('ai_conversations').insert({
-                        id, title, messages, deleted: 0,
-                        created_at: now, updated_at: now,
-                    });
-                }
-            }
-
-            // 8. game_lives — the backend stores the full-precision `life_key`
-            //    plus a truncated MySQL `life_lost_at`. Match on life_key; delete
-            //    any phantom row that an earlier truncated value created, and
-            //    never downgrade recovered=1 (mirrors mobile _applyPullGameLives).
-            for (const life of pullData.game_lives ?? []) {
-                const lifeKey: string | undefined =
-                    (typeof life.life_key === 'string' && life.life_key.length > 0)
-                        ? life.life_key
-                        : (life.life_lost_at as string | undefined);
-                if (!lifeKey) continue;
-
-                const incomingRecovered = (life.recovered === true || life.recovered === 1) ? 1 : 0;
-
-                const backendLifeLostAt: string | undefined = life.life_lost_at;
-                if (backendLifeLostAt && backendLifeLostAt.length > 0 && backendLifeLostAt !== lifeKey) {
-                    await StoreDB('game_lives').where('life_lost_at', backendLifeLostAt).delete();
+            return await StoreDB.transaction(async (trx) => {
+                const pending = await trx('sync_logs').where({ synced: 0 }).whereIn('table_name', pendingPullTables);
+                pullData = filterPendingPull(pullData, pending);
+                await applyNotePull(trx, pullData);
+                // 0. Process deletions from sync_logs
+                for (const log of pullData.sync_logs ?? []) {
+                    if (log.action !== 'deleted') continue;
+                    const key: string | undefined = log.record_key;
+                    if (!key) continue;
+                    switch (log.table_name) {
+                        case 'bookmarks':
+                            await trx('bookmarks').where({ key }).delete();
+                            break;
+                        case 'highlights':
+                            await trx('highlights').where({ key }).delete();
+                            break;
+                        case 'clip_notes':
+                            await trx('clip_notes').where({ key }).delete();
+                            break;
+                        case 'prayer_lists':
+                            await trx('prayer_lists').where({ key }).delete();
+                            break;
+                        case 'prayer_days':
+                            await trx('prayer_days').where({ day: key }).delete();
+                            break;
+                        case 'devotion_days':
+                            await trx('devotion_days').where({ day: key }).delete();
+                            break;
+                        case 'notes':
+                            break;
+                        case 'sermon_favorites':
+                            // record_key is the Supabase sermon uuid — never Number() it.
+                            if (key) {
+                                await trx('sermon_favorites').where({ sermon_uuid: key }).delete();
+                            }
+                            break;
+                        case 'ai_conversations':
+                            await trx('ai_conversations').where({ id: key }).delete();
+                            break;
+                    }
                 }
 
-                const existing = await StoreDB('game_lives').where('life_lost_at', lifeKey).first();
-                if (!existing) {
-                    await StoreDB('game_lives').insert({
-                        life_lost_at: lifeKey,
-                        recovered: incomingRecovered,
+                // 1. Bookmarks
+                for (const bm of pullData.bookmarks ?? []) {
+                    const existing = await trx('bookmarks').where({ key: bm.key }).first();
+                    if (existing) {
+                        await trx('bookmarks').where({ key: bm.key })
+                            .update({ book_number: bm.book_number, chapter: bm.chapter, verse: bm.verse, updated_at: now });
+                    } else {
+                        await trx('bookmarks').insert({
+                            key: bm.key,
+                            book_number: bm.book_number, chapter: bm.chapter, verse: bm.verse,
+                            created_at: now, updated_at: now,
+                        });
+                    }
+                }
+
+                // 2. Highlights
+                for (const hl of pullData.highlights ?? []) {
+                    const existing = await trx('highlights').where({ key: hl.key }).first();
+                    if (existing) {
+                        await trx('highlights').where({ key: hl.key })
+                            .update({ book_number: hl.book_number, chapter: hl.chapter, verse: hl.verse, content: hl.content, updated_at: now });
+                    } else {
+                        await trx('highlights').insert({
+                            key: hl.key,
+                            book_number: hl.book_number, chapter: hl.chapter, verse: hl.verse, content: hl.content,
+                            created_at: now, updated_at: now,
+                        });
+                    }
+                }
+
+                // 3. Clip notes
+                for (const cn of pullData.clip_notes ?? []) {
+                    const existing = await trx('clip_notes').where({ key: cn.key }).first();
+                    if (existing) {
+                        await trx('clip_notes').where({ key: cn.key })
+                            .update({ book_number: cn.book_number, chapter: cn.chapter, verse: cn.verse, content: cn.content, color: cn.color, updated_at: now });
+                    } else {
+                        await trx('clip_notes').insert({
+                            key: cn.key,
+                            book_number: cn.book_number, chapter: cn.chapter, verse: cn.verse,
+                            content: cn.content, color: cn.color ?? '#FFD26A',
+                            created_at: now, updated_at: now,
+                        });
+                    }
+                }
+
+                // 4. Prayer lists
+                for (const pl of pullData.prayer_lists ?? []) {
+                    // The authoritative original creation time, when the server has it.
+                    const clientCreatedAt = pl.client_created_at ?? null;
+                    const existing = await trx('prayer_lists').where('key', pl.key).first();
+                    if (existing) {
+                        const update: any = { title: pl.title, content: pl.content, group: pl.group, index: pl.index, status: pl.status, updated_at: now };
+                        // Only heal created_at from the authoritative client value; never
+                        // let a server insert-time overwrite a correct local created_at.
+                        if (clientCreatedAt) update.created_at = clientCreatedAt;
+                        await trx('prayer_lists').where('key', pl.key).update(update);
+                    } else {
+                        // New local row: prefer client created_at, fall back to server time, then now.
+                        const createdAt = clientCreatedAt ?? pl.created_at ?? now;
+                        await trx('prayer_lists').insert({
+                            key: pl.key, title: pl.title, content: pl.content,
+                            group: pl.group, index: pl.index, status: pl.status,
+                            created_at: createdAt, updated_at: now,
+                        });
+                    }
+                }
+
+                // 4b. Prayer-streak days (union-merged). Per-day `duration` (total
+                //     prayer seconds) is merged as a MAX so the larger total wins —
+                //     idempotent, never double-counts on re-sync.
+                for (const pd of pullData.prayer_days ?? []) {
+                    if (!pd.day) continue;
+                    const incoming = Number(pd.duration ?? 0) || 0;
+                    const existing = await trx('prayer_days').where('day', pd.day).first();
+                    if (!existing) {
+                        await trx('prayer_days').insert({
+                            day: pd.day,
+                            duration: incoming,
+                            created_at: pd.created_at ?? now,
+                            updated_at: pd.updated_at ?? now,
+                        });
+                    } else if (incoming > (existing.duration ?? 0)) {
+                        await trx('prayer_days').where('day', pd.day).update({ duration: incoming, updated_at: now });
+                    }
+                }
+
+                // 4c. Devotion-streak days (created-only, idempotent union)
+                for (const dd of pullData.devotion_days ?? []) {
+                    if (!dd.day) continue;
+                    const existing = await trx('devotion_days').where('day', dd.day).first();
+                    if (!existing) {
+                        await trx('devotion_days').insert({
+                            day: dd.day,
+                            created_at: dd.created_at ?? now,
+                            updated_at: dd.updated_at ?? now,
+                        });
+                    }
+                }
+
+                // Notes are applied transactionally by applyNotePull above.
+
+                // 6. Sermon favorites — the backend stores only the Supabase uuid,
+                //    so a favorite from another device has no body. Preserve any
+                //    local payload; otherwise insert a stub that the renderer
+                //    hydrates from Supabase (see loadFavorites in store/Sermons.ts).
+                //    The stub shape matches mobile's _applyPullSermonFavorites
+                //    exactly, so both platforms produce identical rows.
+                for (const fav of pullData.sermon_favorites ?? []) {
+                    const sermonUuid = fav?.sermon_id;
+                    if (typeof sermonUuid !== 'string' || !sermonUuid) continue;
+                    const existing = await trx('sermon_favorites')
+                        .where({ sermon_uuid: sermonUuid })
+                        .first();
+                    if (existing) continue;
+                    await trx('sermon_favorites').insert({
+                        sermon_uuid: sermonUuid,
+                        payload: JSON.stringify({ id: sermonUuid }),
                         created_at: now,
-                    });
-                } else if (incomingRecovered === 1 && !existing.recovered) {
-                    await StoreDB('game_lives').where('life_lost_at', lifeKey).update({ recovered: 1 });
-                }
-            }
-
-            // 9. qa_group_progress — upsert; high score MAX, is_completed OR,
-            //    times_played MAX, completed_at earliest (mirrors mobile).
-            for (const p of pullData.qa_group_progress ?? []) {
-                if (p.group_id == null) continue;
-                const incomingCompleted = (p.is_completed === true || p.is_completed === 1) ? 1 : 0;
-                const incomingScore = Number(p.high_score_percentage ?? 0) || 0;
-                const incomingPlayed = Number(p.times_played ?? 0) || 0;
-                const existing = await StoreDB('qa_group_progress').where('group_id', p.group_id).first();
-                if (!existing) {
-                    await StoreDB('qa_group_progress').insert({
-                        group_id: p.group_id,
-                        is_completed: incomingCompleted,
-                        high_score_percentage: incomingScore,
-                        times_played: incomingPlayed,
-                        completed_at: p.completed_at ?? null,
-                        updated_at: now,
-                    });
-                } else {
-                    await StoreDB('qa_group_progress').where('group_id', p.group_id).update({
-                        is_completed: (existing.is_completed === 1 || incomingCompleted === 1) ? 1 : 0,
-                        high_score_percentage: Math.max(existing.high_score_percentage ?? 0, incomingScore),
-                        times_played: Math.max(existing.times_played ?? 0, incomingPlayed),
-                        completed_at: earliest(existing.completed_at, p.completed_at),
                         updated_at: now,
                     });
                 }
-            }
 
-            // 10. tf_group_progress — same merge semantics as qa_group_progress.
-            for (const p of pullData.tf_group_progress ?? []) {
-                if (p.group_id == null) continue;
-                const incomingCompleted = (p.is_completed === true || p.is_completed === 1) ? 1 : 0;
-                const incomingScore = Number(p.high_score_percentage ?? 0) || 0;
-                const incomingPlayed = Number(p.times_played ?? 0) || 0;
-                const existing = await StoreDB('tf_group_progress').where('group_id', p.group_id).first();
-                if (!existing) {
-                    await StoreDB('tf_group_progress').insert({
-                        group_id: p.group_id,
-                        is_completed: incomingCompleted,
-                        high_score_percentage: incomingScore,
-                        times_played: incomingPlayed,
-                        completed_at: p.completed_at ?? null,
-                        updated_at: now,
-                    });
-                } else {
-                    await StoreDB('tf_group_progress').where('group_id', p.group_id).update({
-                        is_completed: (existing.is_completed === 1 || incomingCompleted === 1) ? 1 : 0,
-                        high_score_percentage: Math.max(existing.high_score_percentage ?? 0, incomingScore),
-                        times_played: Math.max(existing.times_played ?? 0, incomingPlayed),
-                        completed_at: earliest(existing.completed_at, p.completed_at),
-                        updated_at: now,
-                    });
+                // 7. AI conversations — keyed by the client conversation id. The
+                //    server stores messages as a JSON string in `messages`; keep it
+                //    verbatim so the renderer can parse it the same way it saved it.
+                for (const conv of pullData.ai_conversations ?? []) {
+                    const id: string | undefined = conv?.conversation_id ?? conv?.id;
+                    if (!id) continue;
+                    const messages = typeof conv.messages === 'string'
+                        ? conv.messages
+                        : JSON.stringify(conv.messages ?? []);
+                    const title = conv.title ?? 'New chat';
+                    const existing = await trx('ai_conversations').where({ id }).first();
+                    if (existing) {
+                        await trx('ai_conversations').where({ id })
+                            .update({ title, messages, deleted: 0, updated_at: now });
+                    } else {
+                        await trx('ai_conversations').insert({
+                            id, title, messages, deleted: 0,
+                            created_at: now, updated_at: now,
+                        });
+                    }
                 }
-            }
 
-            return { success: true };
+                // 8. game_lives — the backend stores the full-precision `life_key`
+                //    plus a truncated MySQL `life_lost_at`. Match on life_key; delete
+                //    any phantom row that an earlier truncated value created, and
+                //    never downgrade recovered=1 (mirrors mobile _applyPullGameLives).
+                for (const life of pullData.game_lives ?? []) {
+                    const lifeKey: string | undefined =
+                        (typeof life.life_key === 'string' && life.life_key.length > 0)
+                            ? life.life_key
+                            : (life.life_lost_at as string | undefined);
+                    if (!lifeKey) continue;
+
+                    const incomingRecovered = (life.recovered === true || life.recovered === 1) ? 1 : 0;
+
+                    const backendLifeLostAt: string | undefined = life.life_lost_at;
+                    if (backendLifeLostAt && backendLifeLostAt.length > 0 && backendLifeLostAt !== lifeKey) {
+                        await trx('game_lives').where('life_lost_at', backendLifeLostAt).delete();
+                    }
+
+                    const existing = await trx('game_lives').where('life_lost_at', lifeKey).first();
+                    if (!existing) {
+                        await trx('game_lives').insert({
+                            life_lost_at: lifeKey,
+                            recovered: incomingRecovered,
+                            created_at: now,
+                        });
+                    } else if (incomingRecovered === 1 && !existing.recovered) {
+                        await trx('game_lives').where('life_lost_at', lifeKey).update({ recovered: 1 });
+                    }
+                }
+
+                // 9. qa_group_progress — upsert; high score MAX, is_completed OR,
+                //    times_played MAX, completed_at earliest (mirrors mobile).
+                for (const p of pullData.qa_group_progress ?? []) {
+                    if (p.group_id == null) continue;
+                    const incomingCompleted = (p.is_completed === true || p.is_completed === 1) ? 1 : 0;
+                    const incomingScore = Number(p.high_score_percentage ?? 0) || 0;
+                    const incomingPlayed = Number(p.times_played ?? 0) || 0;
+                    const existing = await trx('qa_group_progress').where('group_id', p.group_id).first();
+                    if (!existing) {
+                        await trx('qa_group_progress').insert({
+                            group_id: p.group_id,
+                            is_completed: incomingCompleted,
+                            high_score_percentage: incomingScore,
+                            times_played: incomingPlayed,
+                            completed_at: p.completed_at ?? null,
+                            updated_at: now,
+                        });
+                    } else {
+                        await trx('qa_group_progress').where('group_id', p.group_id).update({
+                            is_completed: (existing.is_completed === 1 || incomingCompleted === 1) ? 1 : 0,
+                            high_score_percentage: Math.max(existing.high_score_percentage ?? 0, incomingScore),
+                            times_played: Math.max(existing.times_played ?? 0, incomingPlayed),
+                            completed_at: earliest(existing.completed_at, p.completed_at),
+                            updated_at: now,
+                        });
+                    }
+                }
+
+                // 10. tf_group_progress — same merge semantics as qa_group_progress.
+                for (const p of pullData.tf_group_progress ?? []) {
+                    if (p.group_id == null) continue;
+                    const incomingCompleted = (p.is_completed === true || p.is_completed === 1) ? 1 : 0;
+                    const incomingScore = Number(p.high_score_percentage ?? 0) || 0;
+                    const incomingPlayed = Number(p.times_played ?? 0) || 0;
+                    const existing = await trx('tf_group_progress').where('group_id', p.group_id).first();
+                    if (!existing) {
+                        await trx('tf_group_progress').insert({
+                            group_id: p.group_id,
+                            is_completed: incomingCompleted,
+                            high_score_percentage: incomingScore,
+                            times_played: incomingPlayed,
+                            completed_at: p.completed_at ?? null,
+                            updated_at: now,
+                        });
+                    } else {
+                        await trx('tf_group_progress').where('group_id', p.group_id).update({
+                            is_completed: (existing.is_completed === 1 || incomingCompleted === 1) ? 1 : 0,
+                            high_score_percentage: Math.max(existing.high_score_percentage ?? 0, incomingScore),
+                            times_played: Math.max(existing.times_played ?? 0, incomingPlayed),
+                            completed_at: earliest(existing.completed_at, p.completed_at),
+                            updated_at: now,
+                        });
+                    }
+                }
+
+                return { success: true, hasPendingChanges: pending.length > 0 };
+            });
         } catch (error) {
             Log.error('Failed to apply pull data:', error);
             throw error;

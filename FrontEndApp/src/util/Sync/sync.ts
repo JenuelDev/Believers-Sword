@@ -14,6 +14,17 @@ import { useGamesStore } from '../../store/useGamesStore';
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/api`;
 
 let isSyncing = false;
+let queuedPull = false;
+let queuedPullForce = false;
+
+function finishSync(): void {
+    isSyncing = false;
+    if (!queuedPull) return;
+    const force = queuedPullForce;
+    queuedPull = false;
+    queuedPullForce = false;
+    void runPullSync(force);
+}
 let consecutiveFailures = 0;
 let backoffUntil = 0;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -119,6 +130,9 @@ async function pullSync(token: string): Promise<void> {
 
         const { settings, has_more, next_cursor } = response.data;
         const authStore = useAuthStore();
+        if (!authStore.isAuthenticated || authStore.token !== token) {
+            throw new Error('The sync session changed during download.');
+        }
 
         await applyPullPage(window.browserWindow, response.data);
 
@@ -204,7 +218,7 @@ export async function runPushSync(): Promise<void> {
         const data = error?.response?.data;
         console.error(`[Sync] Push error (HTTP ${status ?? 'network'}), retry in ${delaySec}s:`, data ?? error?.message ?? error);
     } finally {
-        isSyncing = false;
+        finishSync();
     }
 }
 
@@ -212,23 +226,28 @@ export async function runPushSync(): Promise<void> {
  * Pull-only sync — fetches remote changes without pushing local ones.
  * Used by the periodic timer so the desktop never auto-pushes without user action.
  */
-export async function runPullSync(): Promise<void> {
-    if (isSyncing) return;
-    if (Date.now() < backoffUntil) return;
+export async function runPullSync(force = false): Promise<void> {
+    if (isSyncing) {
+        queuedPull = true;
+        queuedPullForce = queuedPullForce || force;
+        return;
+    }
 
     const authStore = useAuthStore();
-    // Sync is a paid feature — never run it for a Free account, even if a stale
-    // `syncEnabled` preference is set before the tier resolves.
-    if (!authStore.isSyncEntitled || !authStore.syncEnabled || !authStore.isAuthenticated || !authStore.token) return;
+    if (!authStore.isAuthenticated || !authStore.token) return;
+    if (!force && Date.now() < backoffUntil) return;
+    const token = authStore.token;
 
     isSyncing = true;
     try {
-        await pullSync(authStore.token);
+        if (!authStore.isAuthenticated || token !== authStore.token) return;
+        await pullSync(token);
         consecutiveFailures = 0;
         backoffUntil = 0;
         authStore.loadLastSyncAt();
         reloadStoresAfterPull();
     } catch (error: any) {
+        if (!authStore.isAuthenticated || token !== authStore.token) return;
         const status = error?.response?.status;
         if (status === 401) {
             console.warn('[Sync] Token rejected (401) — logging out.');
@@ -245,7 +264,7 @@ export async function runPullSync(): Promise<void> {
         const data = error?.response?.data;
         console.error(`[Sync] Pull error (HTTP ${status ?? 'network'}), retry in ${delaySec}s:`, data ?? error?.message ?? error);
     } finally {
-        isSyncing = false;
+        finishSync();
     }
 }
 
@@ -290,6 +309,6 @@ export async function runSync(): Promise<void> {
         const data = error?.response?.data;
         console.error(`[Sync] Error (HTTP ${status ?? 'network'}), retry in ${delaySec}s:`, data ?? error?.message ?? error);
     } finally {
-        isSyncing = false;
+        finishSync();
     }
 }
