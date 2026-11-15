@@ -3,7 +3,7 @@ import { NModal } from 'naive-ui';
 import type { BibleQuestionSummary } from './bibleQuestions';
 import BibleQuestionDetail from './BibleQuestionDetail.vue';
 
-// Web only: desktop opens each question in its own window instead.
+// Shared question dialog for desktop and web.
 defineProps<{ question: BibleQuestionSummary | null }>();
 const emit = defineEmits<{ (event: 'close'): void }>();
 </script>

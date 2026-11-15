@@ -1,9 +1,19 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { NButton, NSpin } from 'naive-ui';
 import { Icon } from '@iconify/vue';
 import { answerLabel, countLabel, referenceHost, type BibleAnswer, type BibleQuestionSummary } from './bibleQuestions';
 import { answerHtml, isSafeLink } from './answerHtml';
+import { bibleBooks } from '../../../util/books';
+import SESSION from '../../../util/session';
+import { migrateReplacedVersions, resolveAvailableVersions } from '../../../util/bibleVersions';
+import { useModuleStore } from '../../../store/moduleStore';
+import { getBibleService } from '../../../services/BibleService';
+import { createBibleVerseLoader } from '../../../util/webBridge/bibleVerseCache';
+import { apiRequest } from '../../../util/webBridge/http';
+import { createBiblePassageParser } from '../../../util/biblePassageReference';
+import { createBiblePassagePreview } from '../../../components/BiblePassage/biblePassagePreview';
+import BiblePassageModal from '../../../components/BiblePassage/BiblePassageModal.vue';
 
 /** Meta row and ordered answers for one question; shared by the web dialog and the desktop window. */
 const props = defineProps<{ question: BibleQuestionSummary }>();
@@ -12,6 +22,14 @@ const answers = ref<BibleAnswer[]>([]);
 const loading = ref(false);
 const failed = ref(false);
 let loadToken = 0;
+const moduleStore = useModuleStore();
+const passageParser = createBiblePassageParser(bibleBooks);
+const webChapter = createBibleVerseLoader(path => apiRequest<any[]>(path));
+const passagePreview = createBiblePassagePreview((version, book, chapter) => window.isElectron
+    ? getBibleService().getVerses({ bible_versions: [version], book_number: book, selected_chapter: chapter })
+    : webChapter(version, book, chapter));
+const { selection, verses: passageVerses, state: passageState } = passagePreview;
+onBeforeUnmount(() => { ++loadToken; passagePreview.close(); });
 
 async function load() {
     const question = props.question;
@@ -29,20 +47,48 @@ async function load() {
     }
 }
 
-watch(() => props.question.id, () => void load(), { immediate: true });
+watch(() => props.question.id, () => { passagePreview.close(); void load(); }, { immediate: true });
 
-const rendered = computed(() => answers.value.map(answer => ({ ...answer, html: answerHtml(answer) })));
+const rendered = computed(() => answers.value.map(answer => ({
+    ...answer,
+    html: answerHtml(answer),
+    references: answer.references.map(reference => ({
+        ...reference, passage: passageParser.fromLink(reference.url, reference.title),
+    })),
+})));
 
-function openLink(url: string) {
-    if (isSafeLink(url)) void window.browserWindow.openExternal(url.trim());
+function openLink(url: string, title = '') {
+    const reference = passageParser.fromLink(url, title);
+    if (!reference) {
+        if (isSafeLink(url)) void window.browserWindow.openExternal(url.trim());
+        return;
+    }
+    // Read shared storage at tap time, including when this is a desktop popup.
+    // Creating BibleStore here would load and move a separate reader instance.
+    let settings: Record<string, unknown> = {};
+    try { settings = SESSION.getAll(); } catch { /* Show the missing-version state. */ }
+    const stored = settings['stored-selected-versions'];
+    const available = moduleStore.bibleLists.map(item => item.file_name);
+    const defaults = resolveAvailableVersions(['bs_KJV - 1769.SQLite3'], available);
+    const versions = Array.isArray(stored) ? stored : defaults;
+    const primary = typeof versions[0] === 'string' && versions[0].trim() ? versions[0] : null;
+    const version = primary && window.isElectron ? migrateReplacedVersions([primary])[0] : primary;
+    const module = moduleStore.bibleLists.find(item => item.file_name === version);
+    const size = Number(settings['font-size-of-show-chapter']);
+    void passagePreview.open({
+        reference, version,
+        versionLabel: module?.short_name || module?.title || version?.replace(/\.SQLite3$/i, '') || '',
+        fontSize: Number.isFinite(size) && size >= 10 && size <= 35 ? size : 15,
+        fontFamily: typeof settings['font-family-of-show-chapter'] === 'string' ? settings['font-family-of-show-chapter'] : '',
+    });
 }
 
-/** Links inside answer bodies open in the system browser, never in the app window. */
+/** Scripture opens above the question; ordinary sources use the system browser. */
 function onBodyClick(event: MouseEvent) {
     const link = (event.target as HTMLElement | null)?.closest('a');
     if (!link) return;
     event.preventDefault();
-    openLink(link.getAttribute('href') ?? '');
+    openLink(link.getAttribute('href') ?? '', link.textContent ?? '');
 }
 </script>
 
@@ -71,18 +117,25 @@ function onBodyClick(event: MouseEvent) {
                     :key="`${reference.url} ${reference.title}`"
                     type="button"
                     class="reference-row"
-                    :title="reference.url"
-                    @click="openLink(reference.url)"
+                    :title="reference.passage ? `Read ${reference.passage.label}` : reference.url"
+                    @click="openLink(reference.url, reference.title)"
                 >
-                    <Icon icon="mdi:link-variant" class="reference-icon" />
+                    <Icon :icon="reference.passage ? 'mdi:book-open-page-variant-outline' : 'mdi:link-variant'" class="reference-icon" />
                     <span class="reference-copy">
-                        <span class="reference-title">{{ reference.title }}</span>
-                        <span class="reference-host">{{ referenceHost(reference.url) }}</span>
+                        <span class="reference-title">{{ reference.passage?.label ?? reference.title }}</span>
+                        <span class="reference-host">{{ reference.passage ? 'Read in your selected Bible' : referenceHost(reference.url) }}</span>
                     </span>
-                    <Icon icon="mdi:open-in-new" class="reference-open" />
+                    <Icon :icon="reference.passage ? 'mdi:chevron-right' : 'mdi:open-in-new'" class="reference-open" />
                 </button>
             </div>
         </article>
+        <BiblePassageModal
+            :selection="selection"
+            :verses="passageVerses"
+            :state="passageState"
+            @close="passagePreview.close"
+            @retry="passagePreview.retry"
+        />
     </div>
 </template>
 

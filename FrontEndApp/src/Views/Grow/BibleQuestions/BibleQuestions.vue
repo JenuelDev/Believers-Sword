@@ -15,7 +15,6 @@ const query = ref('');
 const categories = ref<string[]>([]);
 const selected = ref<BibleQuestionSummary | null>(null);
 const scroller = ref<HTMLElement>();
-const isDesktop = Boolean(window.isElectron);
 
 const summary = computed(() => {
     if (loading.value && !questions.value.length) return 'Searching the library...';
@@ -45,14 +44,9 @@ function selectCategory(value: string) {
     void list.reset({ category: category.value === value ? '' : value });
 }
 
-/** Desktop opens each question in its own window; the web uses a dialog. */
+/** Keep the question list in place while reading on desktop and web. */
 function openQuestion(question: BibleQuestionSummary) {
-    if (!isDesktop) {
-        selected.value = question;
-        return;
-    }
-    const { id, category, answer_count } = question;
-    void window.browserWindow.openBibleQuestionWindow({ id, question: question.question, category, answer_count });
+    selected.value = question;
 }
 
 function loadNearEnd() {
@@ -150,7 +144,7 @@ onBeforeUnmount(() => list.dispose());
                 </div>
             </div>
         </div>
-        <BibleQuestionDetailModal v-if="!isDesktop" :question="selected" @close="selected = null" />
+        <BibleQuestionDetailModal :question="selected" @close="selected = null" />
     </section>
 </template>
 
