@@ -1,3 +1,4 @@
 ## Updates
-- Fix Sync for Free Version, always pull data.
-- Bug Fixes
+- Fixed Web Version To Able to Open games
+- Fixed Bugs
+- UX improvement on Reading Page
