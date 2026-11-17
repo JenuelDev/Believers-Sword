@@ -8,6 +8,9 @@ import { useDevotionStreakStore } from '../../store/devotionStreakStore';
 import { bibleBooks } from '../../util/books';
 import { getBibleService } from '../../services/BibleService';
 import { useDevotionCompletion } from './useDevotionCompletion';
+import { useAuthStore } from '../../store/authStore';
+import { useMenuStore } from '../../store/menu';
+import DailyDevotionalAd from './DailyDevotionalAd.vue';
 
 // Maps i18n locale names to ISO codes used in devotionals.db.
 // Falls back to 'en' for any locale not in the DB.
@@ -45,6 +48,11 @@ const loading = ref(true);
 const activeStep = ref(0);
 const bibleStore = useBibleStore();
 const devotionStreak = useDevotionStreakStore();
+const auth = useAuthStore();
+const menu = useMenuStore();
+// Reader navigation hides routed pages without unmounting them.
+const showAds = computed(() => !window.isElectron && !auth.isSyncEntitled
+    && menu.isRouter && menu.menuSelected === '/daily-devotional');
 
 // The synced day remains authoritative even when it arrives after mount.
 const { finished, saving, saveError, finishDevotion, readAgain } = useDevotionCompletion(
@@ -206,7 +214,7 @@ watch(locale, loadTodayDevotional);
 </script>
 
 <template>
-    <div class="daily-devotional h-full overflow-auto">
+    <div class="daily-devotional">
         <div class="devo-container">
             <!-- Loading -->
             <div v-if="loading" class="flex justify-center py-20">
@@ -260,7 +268,14 @@ watch(locale, loadTodayDevotional);
                     </NStep>
                 </NSteps>
 
-                <!-- Content area -->
+                <!-- Only the reading region scrolls; surrounding controls stay fixed. -->
+                <div
+                    :key="activeStep"
+                    class="devo-reading-scroll"
+                    tabindex="0"
+                    role="region"
+                    :aria-label="`${t(steps[activeStep].label)} devotion content`"
+                >
                 <div class="devo-content-area">
                     <div class="devo-content-accent" />
                     <div class="devo-content-inner">
@@ -268,6 +283,11 @@ watch(locale, loadTodayDevotional);
                         <div class="devo-step-body" v-html="stepContent"></div>
                     </div>
                 </div>
+
+                </div>
+
+                <div class="devo-bottom">
+                <DailyDevotionalAd v-if="showAds" />
 
                 <p v-if="saveError" role="alert" class="text-center text-red-500 mb-3">
                     {{ saveError }}
@@ -301,6 +321,7 @@ watch(locale, loadTodayDevotional);
                         <Icon icon="mdi:check-circle" class="text-sm" />
                         {{ $t('Finish') }}
                     </button>
+                </div>
                 </div>
                 </template>
 
@@ -341,6 +362,9 @@ watch(locale, loadTodayDevotional);
                         <Icon icon="mdi:refresh" class="text-sm" />
                         {{ $t('Start Devotion again') }}
                     </button>
+                </div>
+                <div v-if="finished && showAds" class="devo-bottom">
+                    <DailyDevotionalAd />
                 </div>
             </template>
         </div>

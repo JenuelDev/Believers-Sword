@@ -70,13 +70,10 @@ export const routes: Array<RouteRecordRaw> = [
         component: DailyDevotional,
     },
     {
-        // Bible Games — Electron-only (needs bundled game DBs + local progress).
-        // Lazy-loaded so the web bundle never pulls it in; the guard redirects
-        // any web user who reaches it.
+        // Native games use IPC; browser games use the published content API.
         name: 'Games',
         path: '/games',
         component: () => import('../Views/Games/Games.vue'),
-        beforeEnter: () => (window.isElectron ? true : { name: 'PrayerList' }),
     },
 ];
 const router = createRouter({
@@ -85,13 +82,13 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
-    // The desktop (Electron) build stores everything locally — no account needed.
+    // The desktop (Electron) build stores everything locally , no account needed.
     if (window.isElectron) return true;
     if (to.meta?.public) return true;
 
     // Web is free, but still requires a signed-in account: the browser build has
     // no local database, so the backend IS its storage. Subscription tier is not
-    // checked here — Sync (carrying this data to phone/desktop) is the paid
+    // checked here , Sync (carrying this data to phone/desktop) is the paid
     // feature, not web access itself.
     if (!localStorage.getItem('auth_token')) return { name: 'Login' };
 

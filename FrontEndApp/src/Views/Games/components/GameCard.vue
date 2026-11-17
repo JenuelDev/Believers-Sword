@@ -6,6 +6,7 @@ defineProps<{
     emoji: string;
     progress: { completed: number; total: number };
     disabled?: boolean;
+    disabledReason?: string;
 }>();
 
 const emit = defineEmits<{ play: [] }>();
@@ -27,6 +28,7 @@ const emit = defineEmits<{ play: [] }>();
             <div class="flex-1 min-w-0">
                 <p class="font-semibold text-sm text-[var(--theme-text)]">{{ title }}</p>
                 <p class="text-xs text-[var(--theme-text-soft)] mt-0.5 line-clamp-2">{{ description }}</p>
+                <p v-if="disabled && disabledReason" class="text-xs text-[var(--theme-text)] mt-2 font-medium">{{ disabledReason }}</p>
                 <div class="mt-3">
                     <div class="h-1.5 rounded-full bg-[var(--theme-bg-soft)] overflow-hidden">
                         <div

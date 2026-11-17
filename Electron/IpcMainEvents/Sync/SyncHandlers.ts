@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import Log from 'electron-log';
 import { applyNotePull } from './notePull';
+import { applyFourPicturesProgress } from '../../DataBase/FourPicturesProgress';
 import { filterPendingPull, pendingPullTables } from './pendingPull';
 import {
     logSyncChange,
@@ -135,6 +136,7 @@ export const SyncHandlers = (win: BrowserWindow) => {
         game_lives?: any[];
         qa_group_progress?: any[];
         tf_group_progress?: any[];
+        fpow_level_progress?: any[];
     }) => {
         const now = new Date().toISOString();
         // Earlier of two nullable ISO timestamps (mirrors mobile _earliestTimestamp).
@@ -181,6 +183,11 @@ export const SyncHandlers = (win: BrowserWindow) => {
                                 await trx('sermon_favorites').where({ sermon_uuid: key }).delete();
                             }
                             break;
+                        case 'fpow_level_progress': {
+                            const id = /^fpow_level_([1-9][0-9]*)$/.exec(key);
+                            if (id) await trx('fpow_level_progress').where({ level_id: Number(id[1]) }).delete();
+                            break;
+                        }
                         case 'ai_conversations':
                             await trx('ai_conversations').where({ id: key }).delete();
                             break;
@@ -416,6 +423,8 @@ export const SyncHandlers = (win: BrowserWindow) => {
                         });
                     }
                 }
+
+                await applyFourPicturesProgress(trx, pullData);
 
                 return { success: true, hasPendingChanges: pending.length > 0 };
             });

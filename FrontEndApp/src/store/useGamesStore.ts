@@ -3,61 +3,18 @@ import { ref, computed } from 'vue';
 import correctSoundUrl from '../assets/sounds/correct.mp3';
 import wrongSoundUrl from '../assets/sounds/wrong.mp3';
 
-export type GameType = 'qa' | 'tf' | 'fp';
-export type GameState = 'idle' | 'playing' | 'answered' | 'gameOver' | 'completed';
-
-interface GroupProgress {
-    group_id: number;
-    is_completed: number;
-    high_score_percentage: number;
-    times_played: number;
-    completed_at: string | null;
-    updated_at: string;
-}
-
-interface QAQuestion {
-    id: number;
-    group_id: number;
-    question: string;
-    options: string[];
-    answer: number;
-    proof: string;
-    explanation: string | null;
-}
-
-interface TFStatement {
-    id: number;
-    group_id: number;
-    statement: string;
-    answer: number; // 1 = True, 0 = False
-    proof: string;
-    explanation: string | null;
-}
-
-interface FPLevel {
-    id: number;
-    level_order: number;
-    word: string;
-    image1: string;
-    image2: string;
-    image3: string;
-    image4: string;
-}
-
-function playSound(url: string) {
-    try {
-        const audio = new Audio(url);
-        void audio.play();
-    } catch (_) {
-        /* best effort — never let a sound failure break gameplay */
-    }
-}
+import type { GameType, GameState, GroupProgress, QAQuestion, TFStatement } from './games/types';
+import { playSound } from './games/sound';
+import { createFourPictures } from './games/fourPictures';
 
 export const useGamesStore = defineStore('useGamesStore', () => {
     // ── Lives ──────────────────────────────────────────────────────────────
     const lives = ref(7);
     const nextRecoveryAt = ref<string | null>(null);
     const isLoading = ref(false);
+    const isBusy = ref(false);
+    const error = ref('');
+    let retry: (() => Promise<boolean>) | null = null;
     let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
 
     // ── Catalog + progress ───────────────────────────────────────────────────
@@ -65,10 +22,6 @@ export const useGamesStore = defineStore('useGamesStore', () => {
     const qaGroupProgress = ref<Record<number, GroupProgress>>({});
     const tfGroups = ref<Array<{ id: number; name: string; display_order: number; required_completed: number; passing_score: number }>>([]);
     const tfGroupProgress = ref<Record<number, GroupProgress>>({});
-    const fpLevels = ref<FPLevel[]>([]);
-    const fpSolvedIds = ref<Set<number>>(new Set());
-    const fpImagesBasePath = ref('');
-
     // ── Active game state ──────────────────────────────────────────────────
     const activeGameType = ref<GameType | null>(null);
     const currentGroupId = ref<number | null>(null);
@@ -84,15 +37,6 @@ export const useGamesStore = defineStore('useGamesStore', () => {
     const shuffledCorrectIndex = ref(0);
     const newlyPassed = ref(false);
 
-    // ── FP active state ──────────────────────────────────────────────────────
-    const currentFpLevelIndex = ref(0);
-    const fpGuessedLetters = ref<string[]>([]);
-    const fpScrambledLetters = ref<string[]>([]);
-    // Whether each tray tile has been consumed (one letter per tile).
-    const fpTrayUsed = ref<boolean[]>([]);
-    // For each answer slot, which tray tile filled it (so clearing frees the tile).
-    const fpSlotTray = ref<(number | null)[]>([]);
-
     // ── Computed ─────────────────────────────────────────────────────────────
     const qaProgressSummary = computed(() => ({
         completed: Object.values(qaGroupProgress.value).filter((p) => p.is_completed).length,
@@ -102,10 +46,6 @@ export const useGamesStore = defineStore('useGamesStore', () => {
         completed: Object.values(tfGroupProgress.value).filter((p) => p.is_completed).length,
         total: tfGroups.value.length,
     }));
-    const fpProgressSummary = computed(() => ({
-        completed: fpSolvedIds.value.size,
-        total: fpLevels.value.length,
-    }));
     const currentQuestion = computed((): QAQuestion | TFStatement | null =>
         currentIndex.value < currentItems.value.length ? currentItems.value[currentIndex.value] : null,
     );
@@ -114,10 +54,11 @@ export const useGamesStore = defineStore('useGamesStore', () => {
     const scorePercentage = computed(() =>
         totalItems.value === 0 ? 0 : Math.round((score.value / totalItems.value) * 100),
     );
-    const currentFpLevel = computed((): FPLevel | null => {
-        const unsolved = fpLevels.value.filter((l) => !fpSolvedIds.value.has(l.id));
-        return unsolved[currentFpLevelIndex.value] ?? null;
-    });
+    const fp = createFourPictures({ canPlay, gameState, activeGameType, newlyPassed, lives, loseLife,
+        blocked: computed(() => isBusy.value || Boolean(error.value)), runAction: (work) => action(work)() });
+    const { fpLevels, fpSolvedIds, fpImagesBasePath, fpProgressSummary, currentFpLevel,
+        fpGuessedLetters, fpScrambledLetters, fpTrayUsed, startFPGame, fpTapLetter,
+        fpTapTrayLetter, fpRemoveLetter, loadFPData } = fp;
 
     function qaIsGroupUnlocked(groupId: number) {
         const group = qaGroups.value.find((g) => g.id === groupId);
@@ -136,22 +77,20 @@ export const useGamesStore = defineStore('useGamesStore', () => {
         if (!nextRecoveryAt.value) return;
         const delay = new Date(nextRecoveryAt.value).getTime() - Date.now();
         if (delay <= 0) {
-            void refreshLives();
+            void refreshLives().catch((cause) => { error.value = cause.message; });
             return;
         }
         // Cap the timer so a far-future recovery still re-checks periodically.
-        recoveryTimer = setTimeout(() => void refreshLives(), Math.min(delay + 500, 2_147_483_000));
+        recoveryTimer = setTimeout(() => void refreshLives().catch((cause) => { error.value = cause.message; }), Math.min(delay + 500, 2_147_483_000));
     }
 
     async function refreshLives() {
-        if (!window.isElectron) return;
         lives.value = await window.browserWindow.gameGetLives();
         nextRecoveryAt.value = await window.browserWindow.gameNextRecoveryAt();
         scheduleRecoveryTimer();
     }
 
     async function loseLife() {
-        if (!window.isElectron) return;
         lives.value = await window.browserWindow.gameLoseLife();
         nextRecoveryAt.value = await window.browserWindow.gameNextRecoveryAt();
         scheduleRecoveryTimer();
@@ -174,19 +113,8 @@ export const useGamesStore = defineStore('useGamesStore', () => {
         tfGroups.value = groups;
         tfGroupProgress.value = Object.fromEntries(progress.map((p) => [p.group_id, p]));
     }
-    async function loadFPData() {
-        const [levels, solvedIds, basePath] = await Promise.all([
-            window.browserWindow.fpGetLevels(),
-            window.browserWindow.fpGetSolvedLevelIds(),
-            window.browserWindow.fpGetImagesBasePath(),
-        ]);
-        fpLevels.value = levels;
-        fpSolvedIds.value = new Set(solvedIds);
-        fpImagesBasePath.value = basePath;
-    }
-
     async function init() {
-        if (!window.isElectron) return;
+        exitGame();
         isLoading.value = true;
         try {
             await Promise.all([refreshLives(), loadQAData(), loadTFData(), loadFPData()]);
@@ -196,10 +124,10 @@ export const useGamesStore = defineStore('useGamesStore', () => {
     }
 
     // Refresh lives + synced progress after a pull sync, without touching an
-    // in-progress game. FP is local-only, so it never changes from a pull.
+    // in-progress game. Active Four Pictures clues stay fixed until exit.
     async function refreshAfterSync() {
-        if (!window.isElectron) return;
-        await Promise.all([refreshLives(), loadQAData(), loadTFData()]);
+        await Promise.all([refreshLives(), loadQAData(), loadTFData(),
+            ...(activeGameType.value === 'fp' && gameState.value === 'playing' ? [] : [fp.refreshSolved()])]);
     }
 
     // ── Q&A flow ───────────────────────────────────────────────────────────
@@ -224,10 +152,12 @@ export const useGamesStore = defineStore('useGamesStore', () => {
     }
 
     async function startQAGame(groupId: number) {
-        if (!canPlay.value) return;
+        if (!canPlay.value) throw new Error('No lives remain. Please wait for a life to recover.');
         activeGameType.value = 'qa';
         currentGroupId.value = groupId;
+        if (!qaIsGroupUnlocked(groupId)) throw new Error('Complete earlier groups to unlock this group.');
         const questions = await window.browserWindow.qaGetQuestionsForGroup(groupId);
+        if (!questions.length) throw new Error('This group has no published questions yet.');
         currentItems.value = questions;
         resetRoundState();
         if (questions.length) shuffleQAOptions(questions[0] as QAQuestion);
@@ -237,6 +167,7 @@ export const useGamesStore = defineStore('useGamesStore', () => {
     async function submitQAAnswer(answerIndex: number) {
         if (gameState.value !== 'playing') return;
         const correct = answerIndex === shuffledCorrectIndex.value;
+        if (!correct) await loseLife();
         selectedAnswerIndex.value = answerIndex;
         lastAnswerCorrect.value = correct;
         if (correct) {
@@ -247,7 +178,6 @@ export const useGamesStore = defineStore('useGamesStore', () => {
         } else {
             streak.value = 0;
             playSound(wrongSoundUrl);
-            await loseLife();
         }
         gameState.value = 'answered';
     }
@@ -275,11 +205,11 @@ export const useGamesStore = defineStore('useGamesStore', () => {
             gameState.value = 'gameOver';
             return;
         }
-        currentIndex.value++;
-        if (currentIndex.value >= currentItems.value.length) {
+        if (currentIndex.value + 1 >= currentItems.value.length) {
             await finalizeQAGame();
             gameState.value = 'completed';
         } else {
+            currentIndex.value++;
             shuffleQAOptions(currentItems.value[currentIndex.value] as QAQuestion);
             gameState.value = 'playing';
         }
@@ -287,10 +217,12 @@ export const useGamesStore = defineStore('useGamesStore', () => {
 
     // ── True/False flow ──────────────────────────────────────────────────────
     async function startTFGame(groupId: number) {
-        if (!canPlay.value) return;
+        if (!canPlay.value) throw new Error('No lives remain. Please wait for a life to recover.');
         activeGameType.value = 'tf';
         currentGroupId.value = groupId;
+        if (!tfIsGroupUnlocked(groupId)) throw new Error('Complete earlier groups to unlock this group.');
         const statements = await window.browserWindow.tfGetStatementsForGroup(groupId);
+        if (!statements.length) throw new Error('This group has no published questions yet.');
         currentItems.value = statements;
         resetRoundState();
         gameState.value = 'playing';
@@ -300,6 +232,7 @@ export const useGamesStore = defineStore('useGamesStore', () => {
         if (gameState.value !== 'playing') return;
         const stmt = currentItems.value[currentIndex.value] as TFStatement;
         const correct = (isTrue ? 1 : 0) === stmt.answer;
+        if (!correct) await loseLife();
         selectedAnswerIndex.value = isTrue ? 1 : 0;
         lastAnswerCorrect.value = correct;
         if (correct) {
@@ -310,7 +243,6 @@ export const useGamesStore = defineStore('useGamesStore', () => {
         } else {
             streak.value = 0;
             playSound(wrongSoundUrl);
-            await loseLife();
         }
         gameState.value = 'answered';
     }
@@ -338,138 +270,12 @@ export const useGamesStore = defineStore('useGamesStore', () => {
             gameState.value = 'gameOver';
             return;
         }
-        currentIndex.value++;
-        if (currentIndex.value >= currentItems.value.length) {
+        if (currentIndex.value + 1 >= currentItems.value.length) {
             await finalizeTFGame();
             gameState.value = 'completed';
         } else {
+            currentIndex.value++;
             gameState.value = 'playing';
-        }
-    }
-
-    // ── Four Pictures flow ─────────────────────────────────────────────────
-    function buildFPScramble(word: string): string[] {
-        const letters = word.toUpperCase().split('');
-        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        const target = Math.max(12, letters.length);
-        while (letters.length < target) {
-            letters.push(alphabet[Math.floor(Math.random() * 26)]);
-        }
-        for (let j = letters.length - 1; j > 0; j--) {
-            const k = Math.floor(Math.random() * (j + 1));
-            [letters[j], letters[k]] = [letters[k], letters[j]];
-        }
-        return letters;
-    }
-
-    function loadFpLevelIntoState() {
-        const level = currentFpLevel.value;
-        if (!level) return;
-        fpGuessedLetters.value = new Array(level.word.length).fill('');
-        fpScrambledLetters.value = buildFPScramble(level.word);
-        fpTrayUsed.value = new Array(fpScrambledLetters.value.length).fill(false);
-        fpSlotTray.value = new Array(level.word.length).fill(null);
-    }
-
-    // Clear all placed letters, freeing every tray tile (used when a guess is wrong).
-    function clearFpGuess() {
-        fpGuessedLetters.value = fpGuessedLetters.value.map(() => '');
-        fpSlotTray.value = fpSlotTray.value.map(() => null);
-        fpTrayUsed.value = fpTrayUsed.value.map(() => false);
-    }
-
-    function startFPGame() {
-        if (!canPlay.value) return;
-        activeGameType.value = 'fp';
-        currentFpLevelIndex.value = 0;
-        newlyPassed.value = false;
-        const level = currentFpLevel.value;
-        if (!level) {
-            gameState.value = 'completed';
-            return;
-        }
-        loadFpLevelIntoState();
-        gameState.value = 'playing';
-    }
-
-    // Place a specific tray tile (by index) into the next empty answer slot and
-    // mark that tile as consumed so it can't be used again.
-    function fpTapTrayLetter(trayIndex: number) {
-        if (gameState.value !== 'playing') return;
-        if (fpTrayUsed.value[trayIndex]) return;
-        const emptyIndex = fpGuessedLetters.value.findIndex((l) => l === '');
-        if (emptyIndex === -1) return;
-
-        const nextGuess = [...fpGuessedLetters.value];
-        nextGuess[emptyIndex] = fpScrambledLetters.value[trayIndex];
-        fpGuessedLetters.value = nextGuess;
-
-        const nextSlotTray = [...fpSlotTray.value];
-        nextSlotTray[emptyIndex] = trayIndex;
-        fpSlotTray.value = nextSlotTray;
-
-        const nextUsed = [...fpTrayUsed.value];
-        nextUsed[trayIndex] = true;
-        fpTrayUsed.value = nextUsed;
-
-        void checkFPAnswer();
-    }
-
-    // Keyboard entry: consume the first unused tray tile matching the letter.
-    function fpTapLetter(letter: string) {
-        if (gameState.value !== 'playing') return;
-        const trayIndex = fpScrambledLetters.value.findIndex(
-            (l, i) => l === letter && !fpTrayUsed.value[i],
-        );
-        if (trayIndex === -1) return;
-        fpTapTrayLetter(trayIndex);
-    }
-
-    function fpRemoveLetter(index: number) {
-        if (gameState.value !== 'playing') return;
-        if (fpGuessedLetters.value[index] === '') return;
-
-        const trayIndex = fpSlotTray.value[index];
-        if (trayIndex != null) {
-            const nextUsed = [...fpTrayUsed.value];
-            nextUsed[trayIndex] = false;
-            fpTrayUsed.value = nextUsed;
-        }
-
-        const nextGuess = [...fpGuessedLetters.value];
-        nextGuess[index] = '';
-        fpGuessedLetters.value = nextGuess;
-
-        const nextSlotTray = [...fpSlotTray.value];
-        nextSlotTray[index] = null;
-        fpSlotTray.value = nextSlotTray;
-    }
-
-    async function checkFPAnswer() {
-        const level = currentFpLevel.value;
-        if (!level) return;
-        const guessed = fpGuessedLetters.value.join('').toUpperCase();
-        if (guessed.length < level.word.length || fpGuessedLetters.value.some((l) => l === '')) return;
-
-        if (guessed === level.word.toUpperCase()) {
-            playSound(correctSoundUrl);
-            await window.browserWindow.fpMarkLevelSolved(level.id);
-            fpSolvedIds.value = new Set([...fpSolvedIds.value, level.id]);
-            const remaining = fpLevels.value.filter((l) => !fpSolvedIds.value.has(l.id));
-            if (remaining.length === 0) {
-                gameState.value = 'completed';
-            } else {
-                currentFpLevelIndex.value = 0;
-                loadFpLevelIntoState();
-            }
-        } else {
-            playSound(wrongSoundUrl);
-            await loseLife();
-            if (lives.value <= 0) {
-                gameState.value = 'gameOver';
-                return;
-            }
-            clearFpGuess();
         }
     }
 
@@ -482,15 +288,17 @@ export const useGamesStore = defineStore('useGamesStore', () => {
         resetRoundState();
         shuffledOptions.value = [];
         shuffledCorrectIndex.value = 0;
-        fpGuessedLetters.value = [];
-        fpScrambledLetters.value = [];
-        fpTrayUsed.value = [];
-        fpSlotTray.value = [];
+        fp.reset();
+        error.value = ''; retry = null;
     }
 
     function dispose() {
         if (recoveryTimer) clearTimeout(recoveryTimer);
         recoveryTimer = null;
+        if (!window.isElectron) {
+            exitGame(); qaGroups.value = []; tfGroups.value = [];
+            qaGroupProgress.value = {}; tfGroupProgress.value = {};
+        }
     }
 
     // Debug: wipe all progress + refill lives, then reload the catalog.
@@ -501,25 +309,37 @@ export const useGamesStore = defineStore('useGamesStore', () => {
         await init();
     }
 
+    function action<T extends unknown[]>(fn: (...args: T) => Promise<void>) {
+        return async (...args: T): Promise<boolean> => {
+            if (isBusy.value) return false;
+            isBusy.value = true; error.value = '';
+            retry = () => action(fn)(...args);
+            try { await fn(...args); retry = null; return true; }
+            catch (cause) { error.value = cause instanceof Error ? cause.message : 'Could not save your game. Try again.'; return false; }
+            finally { isBusy.value = false; }
+        };
+    }
+    async function retryAction() { return retry ? retry() : false; }
+
     return {
         // Lives
         lives, nextRecoveryAt, isLoading, refreshLives, loseLife,
         // Q&A
         qaGroups, qaGroupProgress, qaProgressSummary, qaIsGroupUnlocked,
-        startQAGame, submitQAAnswer, nextQAQuestion,
+        startQAGame: action(startQAGame), submitQAAnswer: action(submitQAAnswer), nextQAQuestion: action(nextQAQuestion),
         // T/F
         tfGroups, tfGroupProgress, tfProgressSummary, tfIsGroupUnlocked,
-        startTFGame, submitTFAnswer, nextTFQuestion,
+        startTFGame: action(startTFGame), submitTFAnswer: action(submitTFAnswer), nextTFQuestion: action(nextTFQuestion),
         // FP
         fpLevels, fpSolvedIds, fpImagesBasePath, fpProgressSummary,
         currentFpLevel, fpGuessedLetters, fpScrambledLetters, fpTrayUsed,
-        startFPGame, fpTapLetter, fpTapTrayLetter, fpRemoveLetter,
+        startFPGame: action(startFPGame), fpTapLetter, fpTapTrayLetter, fpRemoveLetter,
         // Shared game state
         activeGameType, currentGroupId, gameState, currentQuestion,
         totalItems, canPlay, scorePercentage, score, streak, bestStreak,
         lastAnswerCorrect, selectedAnswerIndex, shuffledOptions, shuffledCorrectIndex,
         currentIndex, newlyPassed, exitGame,
         // Lifecycle
-        init, refreshAfterSync, dispose, resetAllProgress,
+        init: action(init), refreshAfterSync, dispose, resetAllProgress, isBusy, error, retryAction,
     };
 });

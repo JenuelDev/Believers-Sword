@@ -36,6 +36,7 @@ beforeEach(async () => {
         'electron-log': { error() {} }, '../../DataBase/SyncDB': {},
         '../../DataBase/DataBase': { StoreDB: db }, './notePull': load('notePull.ts', {}),
         './pendingPull': load('pendingPull.ts', {}),
+        '../../DataBase/FourPicturesProgress': load('../../DataBase/FourPicturesProgress.ts', { './DataBase': { StoreDB: db }, './SyncDB': {} }),
     }).SyncHandlers({});
     apply = (page) => handlers.get('applyPullData')(null, page);
 });
@@ -69,4 +70,19 @@ test('a failed page rolls back every preceding write', async () => {
     await assert.rejects(apply({ bookmarks: [{ key: 'new', book_number: 10, chapter: 1, verse: 1 }],
         highlights: [{ key: 'existing', content: 'Fail' }] }), /fixture failure/);
     assert.equal(await db('bookmarks').first(), undefined);
+});
+
+
+test('queued Four Pictures solves survive remote deletion until uploaded', async () => {
+    await db.schema.createTable('fpow_level_progress', (t) => {
+        t.integer('level_id').primary(); t.text('solved_at'); t.text('hint_state');
+    });
+    await db('fpow_level_progress').insert({ level_id: 17, solved_at: '2026-11-01T00:00:00Z' });
+    await db('sync_logs').insert({ table_name: 'fpow_level_progress', record_key: 'fpow_level_17', action: 'updated' });
+    const page = { sync_logs: [{ table_name: 'fpow_level_progress', record_key: 'fpow_level_17', action: 'deleted' }] };
+    assert.equal((await apply(page)).hasPendingChanges, true);
+    assert.ok(await db('fpow_level_progress').first());
+    await db('sync_logs').update({ synced: 1 });
+    await apply(page);
+    assert.equal(await db('fpow_level_progress').first(), undefined);
 });

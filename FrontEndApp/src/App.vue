@@ -154,9 +154,9 @@ onBeforeUnmount(() => {
                     <!-- Popup windows (e.g. Compare Verse) — no sidebar/titlebar/footer -->
                     <RouterView v-if="isPopupWindow" />
 
-                    <NLayout v-else class="h-[100vh] opacity-0 transition-all transform scale-50" :class="{'!opacity-100 !scale-100': isMounted}">
-                        <TitleBar class="h-[var(--header-height)]" />
-                        <NLayout class="h-[calc(100%-(var(--header-height)+var(--footer-height)))]" has-sider>
+                    <NLayout v-else class="app-shell opacity-0 transition-all transform scale-50" content-style="display: flex; flex-direction: column; height: 100%; overflow: hidden" :class="{'!opacity-100 !scale-100': isMounted}">
+                        <TitleBar class="h-[var(--header-height)] shrink-0" />
+                        <NLayout class="app-workspace" style="flex: 1 1 0; min-height: 0" has-sider>
                             <NLayoutSider
                                 bordered
                                 :collapsed="isSideBarCollapse"
@@ -218,7 +218,7 @@ onBeforeUnmount(() => {
                                 </div>
                             </NLayout>
                         </NLayout>
-                        <FooterComponent class="h-[var(--footer-height)]" size="tiny" />
+                        <FooterComponent class="h-[var(--footer-height)] shrink-0" size="tiny" />
                     </NLayout>
                     <AboutModal />
                     <SettingsModal />
@@ -235,6 +235,12 @@ onBeforeUnmount(() => {
     </NConfigProvider>
 </template>
 <style lang="scss">
+.app-shell {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+}
+
 .side-bar-menu {
     .n-scrollbar-content {
         height: 100%;

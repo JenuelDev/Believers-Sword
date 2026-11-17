@@ -15,6 +15,7 @@ import qaGroupProgressMigration from './StoreDB/qa_group_progress.migration';
 import tfGroupProgressMigration from './StoreDB/tf_group_progress.migration';
 import fpowLevelProgressMigration from './StoreDB/fpow_level_progress.migration';
 import Log from 'electron-log';
+import { backfillFourPicturesProgress } from '../../DataBase/FourPicturesProgress';
 
 export default async () => {
     try {
@@ -51,11 +52,12 @@ export default async () => {
         // setup devotion-streak days
         await devotionDaysMigration();
 
-        // setup games: shared lives + per-group progress (+ local-only FP levels)
+        // setup games: shared lives + per-group progress (+ Four Pictures progress)
         await gameLivesMigration();
         await qaGroupProgressMigration();
         await tfGroupProgressMigration();
         await fpowLevelProgressMigration();
+        await backfillFourPicturesProgress();
     } catch (e) {
         try {
             Log.error(e);

@@ -3,6 +3,7 @@ import path from 'path';
 import Log from 'electron-log';
 import { StoreDB, QaGamesDB, TfGamesDB, FpGamesDB } from '../../DataBase/DataBase';
 import { logSyncChange } from '../../DataBase/SyncDB';
+import { saveFourPicturesSolved, deleteFourPicturesProgress } from '../../DataBase/FourPicturesProgress';
 
 const MAX_LIVES = 7;
 const RECOVERY_MS = 2 * 60 * 60 * 1000; // 2 hours, matches mobile games_service.dart
@@ -186,7 +187,7 @@ export default function Games() {
 
     // ── Debug: reset all game progress + lives ───────────────────────────────
     // Clears qa/tf group progress (synced as deletions so it propagates),
-    // fpow level progress (local-only), and refills lives to full.
+    // fpow level progress, and refills lives to full.
     ipcMain.handle('game:resetProgress', async () => {
         try {
             // Q&A + True/False progress — log each deletion for sync, then delete.
@@ -211,8 +212,7 @@ export default function Games() {
                 await StoreDB(table).del();
             }
 
-            // Four Pictures progress is device-local only (not synced).
-            await StoreDB('fpow_level_progress').del();
+            await deleteFourPicturesProgress();
 
             // Refill lives — mark every still-lost life as recovered.
             const liveRows = await StoreDB('game_lives').where('recovered', 0).select('life_lost_at');
@@ -347,16 +347,10 @@ export default function Games() {
 
     ipcMain.handle('fp:markLevelSolved', async (_, levelId: number) => {
         try {
-            const now = new Date().toISOString();
-            const existing = await StoreDB('fpow_level_progress').where('level_id', levelId).first();
-            if (existing) {
-                await StoreDB('fpow_level_progress').where('level_id', levelId).update({ solved_at: now, hint_state: null });
-            } else {
-                await StoreDB('fpow_level_progress').insert({ level_id: levelId, solved_at: now, hint_state: null });
-            }
-            // No logSync: fpow_level_progress is local-only (backend rejects it).
+            await saveFourPicturesSolved(levelId);
         } catch (e) {
             Log.error('[Games] fp:markLevelSolved error:', e);
+            throw e;
         }
     });
 

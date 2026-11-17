@@ -1,8 +1,16 @@
 .daily-devotional {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
     font-family: var(--bible-font-family, 'Poppins'), sans-serif;
 }
 
 .devo-container {
+    box-sizing: border-box;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     max-width: 640px;
     margin: 0 auto;
     padding: 32px 24px;
@@ -97,11 +105,34 @@
     }
 }
 
+/* Custom SVG icons need the same foreground as Naive UI's built-in icons. */
+.devo-step :deep(.n-step-indicator-slot) {
+    color: var(--n-indicator-text-color);
+}
+
+.devo-step-active :deep(.n-step-indicator-slot) {
+    color: var(--primary-foreground, #fff);
+}
+
 /* ---- Content Area ---- */
+.devo-reading-scroll {
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 8px;
+}
+
+.devo-reading-scroll:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
 .devo-content-area {
     display: flex;
     gap: 0;
-    margin-bottom: 20px;
+    margin-bottom: 0;
 }
 
 .devo-content-accent {
@@ -153,6 +184,19 @@
     opacity: 0.5;
     margin-top: 6px;
     font-style: italic;
+}
+
+/* Keep the banner and navigation outside the scrolling reading region. */
+.devo-bottom {
+    margin-top: auto;
+    padding-top: 20px;
+    flex-shrink: 0;
+}
+
+.devo-header,
+.devo-steps,
+.devo-content-area {
+    flex-shrink: 0;
 }
 
 /* ---- Navigation ---- */
@@ -208,6 +252,8 @@
 
 /* ---- Completion + day-streak card ---- */
 .devo-complete {
+    min-height: 0;
+    overflow-y: auto;
     margin-top: 24px;
     padding: 26px 18px 22px;
     border-radius: 18px;
@@ -353,4 +399,11 @@
 
 .verse-preview-text :deep(pb) {
     display: block;
+}
+
+@media (max-height: 650px) {
+    .devo-container { padding: 12px 24px; }
+    .devo-header { margin-bottom: 12px; }
+    .devo-steps { margin-bottom: 12px; }
+    .devo-bottom { padding-top: 8px; }
 }

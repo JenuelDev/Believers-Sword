@@ -40,13 +40,14 @@ onUnmounted(() => {
 <template>
     <div class="flex items-center justify-between p-4 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-elevated)]">
         <div>
-            <p class="text-xs font-bold tracking-widest text-[var(--theme-text-soft)] uppercase mb-2">Lives</p>
+            <p class="text-xs font-bold tracking-widest text-[var(--theme-text-soft)] uppercase mb-2">Lives: {{ lives }} / {{ MAX_LIVES }}</p>
             <div class="flex gap-1">
                 <span v-for="i in MAX_LIVES" :key="i" class="text-xl leading-none">
                     <span v-if="i <= lives" class="text-red-500">&#10084;</span>
                     <span v-else class="text-[var(--theme-text-soft)]">&#10084;</span>
                 </span>
             </div>
+            <p v-if="lives <= 0" class="text-xs text-[var(--theme-text-soft)] mt-2">No hearts left. Hearts are shared across all games.</p>
         </div>
         <div class="text-right">
             <span

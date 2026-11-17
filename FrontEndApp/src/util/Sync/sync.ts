@@ -38,7 +38,7 @@ async function pushSync(token: string): Promise<number> {
 
     if (!unsyncedChanges.length) return 0;
 
-    const ALLOWED_TABLES = ['bookmarks', 'highlights', 'clip_notes', 'prayer_lists', 'prayer_days', 'devotion_days', 'notes', 'sermon_favorites', 'ai_conversations', 'game_lives', 'qa_group_progress', 'tf_group_progress'];
+    const ALLOWED_TABLES = ['bookmarks', 'highlights', 'clip_notes', 'prayer_lists', 'prayer_days', 'devotion_days', 'notes', 'sermon_favorites', 'ai_conversations', 'game_lives', 'qa_group_progress', 'tf_group_progress', 'fpow_level_progress'];
     const ALLOWED_ACTIONS = ['created', 'updated', 'deleted'];
 
     // Discard legacy entries: no record_key, unknown table name, or unknown action.

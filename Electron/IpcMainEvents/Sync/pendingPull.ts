@@ -1,7 +1,7 @@
 const keys: Record<string, string> = {
     bookmarks: 'key', highlights: 'key', clip_notes: 'key', prayer_lists: 'key',
     sermon_favorites: 'sermon_id', prayer_days: 'day', devotion_days: 'day',
-    ai_conversations: 'conversation_id',
+    ai_conversations: 'conversation_id', fpow_level_progress: 'level_id',
 };
 export const pendingPullTables = [...Object.keys(keys), 'notes'];
 
@@ -15,7 +15,7 @@ export function filterPendingPull<T extends Record<string, any>>(data: T, pendin
     }
     const result: Record<string, any> = { ...data };
     for (const [table, ids] of blocked) {
-        result[table] = (data[table] ?? []).filter((row: any) => !ids.has(row[keys[table]]));
+        result[table] = (data[table] ?? []).filter((row: any) => !ids.has(table === 'fpow_level_progress' ? `fpow_level_${row.level_id}` : row[keys[table]]));
     }
     result.sync_logs = (data.sync_logs ?? []).filter((log: any) =>
         !blocked.get(log.table_name)?.has(log.record_key));

@@ -2,7 +2,10 @@ import { defineStore } from 'pinia';
 import { onBeforeMount, ref, watch } from 'vue';
 import axios from 'axios';
 import { debouncedRunSync } from '../util/Sync/sync';
-import { bookNumberFromName } from '../util/bookNameLookup';
+import { normalizeSermon, type SermonType } from './sermons/sermonModels';
+import { sermonTopicQuery } from './sermons/sermonTopics';
+export type { SermonType, ScriptureRef } from './sermons/sermonModels';
+export { sermonSeriesLabel, scriptureRefLabel } from './sermons/sermonModels';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
@@ -41,106 +44,6 @@ const CARD_COLUMNS = [
  */
 const FULL_COLUMNS = `${CARD_COLUMNS},content,content_format,speaker_title,speaker_avatar_url,scripture_refs,video_url,audio_url`;
 
-export type ScriptureRef = {
-    book: string;          // as authored, e.g. "1 Samuel"
-    bookNumber: number | null;
-    chapter: number | null;
-    verse_start: number | null;
-    verse_end: number | null;
-};
-
-export type SermonType = {
-    id: string;            // uuid
-    slug: string;
-    title: string;
-    subtitle: string | null;
-    summary: string | null;
-    content: string | null;        // null on a card row
-    content_format: 'markdown' | 'html' | 'plain';
-    speaker_name: string;
-    speaker_title: string | null;
-    speaker_avatar_url: string | null;
-    series_name: string | null;
-    series_part: number | null;
-    scripture_refs: ScriptureRef[];
-    primary_scripture: string | null;
-    topics: string[];
-    video_url: string | null;
-    audio_url: string | null;
-    thumbnail_url: string | null;
-    duration_seconds: number | null;
-    featured: boolean;
-    view_count: number;
-    published_at: string | null;
-    preached_at: string | null;
-};
-
-/**
- * Map a PostgREST row to SermonType.
- *
- * Tolerates a card-columns row (no `content`, `content_format` or
- * `scripture_refs`) as well as a full one — `content === null` is how the
- * detail modal knows to fetch or fall back to the offline message. Also
- * tolerates the stub payload `{ id: uuid }` that the sync applier writes for a
- * favorite pulled from another device.
- */
-function normalizeSermon(row: any): SermonType {
-    return {
-        id: String(row?.id ?? ''),
-        slug: row?.slug ?? '',
-        title: row?.title ?? 'Untitled',
-        subtitle: row?.subtitle ?? null,
-        summary: row?.summary ?? null,
-        content: row?.content ?? null,
-        content_format: row?.content_format ?? 'markdown',
-        speaker_name: row?.speaker_name ?? '',
-        speaker_title: row?.speaker_title ?? null,
-        speaker_avatar_url: row?.speaker_avatar_url ?? null,
-        series_name: row?.series_name ?? null,
-        series_part: row?.series_part ?? null,
-        scripture_refs: (row?.scripture_refs ?? []).map((ref: any) => ({
-            book: ref?.book ?? '',
-            // Supabase stores the book as a NAME; the reader needs a number.
-            // Null when unrecognised — the view must then render plain text.
-            bookNumber: bookNumberFromName(ref?.book),
-            chapter: ref?.chapter ?? null,
-            verse_start: ref?.verse_start ?? null,
-            verse_end: ref?.verse_end ?? null,
-        })),
-        primary_scripture: row?.primary_scripture ?? null,
-        topics: row?.topics ?? [],
-        video_url: row?.video_url ?? null,
-        audio_url: row?.audio_url ?? null,
-        thumbnail_url: row?.thumbnail_url ?? null,
-        duration_seconds: row?.duration_seconds ?? null,
-        featured: Boolean(row?.featured),
-        view_count: row?.view_count ?? 0,
-        published_at: row?.published_at ?? null,
-        preached_at: row?.preached_at ?? null,
-    };
-}
-
-/** "Grief · Part 2", "Grief", or '' when standalone. Mirrors mobile's seriesLabel. */
-export function sermonSeriesLabel(sermon: SermonType): string {
-    if (!sermon.series_name) return '';
-    return sermon.series_part
-        ? `${sermon.series_name} · Part ${sermon.series_part}`
-        : sermon.series_name;
-}
-
-/** Display label for one scripture ref: "John 11:1-44", "John 11", "Habakkuk". */
-export function scriptureRefLabel(ref: ScriptureRef): string {
-    if (!ref.book) return '';
-    if (!ref.chapter) return ref.book;
-    const base = `${ref.book} ${ref.chapter}`;
-    if (!ref.verse_start) return base;
-    const versePart =
-        ref.verse_end && ref.verse_end !== ref.verse_start
-            ? `${ref.verse_start}-${ref.verse_end}`
-            : `${ref.verse_start}`;
-    return `${base}:${versePart}`;
-}
-
 export const useSermonStore = defineStore('useSermonStore', () => {
     // Feed (public sermons)
     const sermons = ref<SermonType[]>([]);
@@ -148,10 +51,10 @@ export const useSermonStore = defineStore('useSermonStore', () => {
     const page = ref(1);
     const hasMore = ref(true);
     const search = ref('');
-    const topicFilter = ref('');
+    const topicFilter = ref<string[]>([]);
     const sort = ref<'recent' | 'popular' | 'oldest'>('recent');
 
-    // Topics (for filter chips)
+    // Topics (for the multi-select)
     const topics = ref<string[]>([]);
 
     // Offline / favorites
@@ -190,12 +93,15 @@ export const useSermonStore = defineStore('useSermonStore', () => {
         }
     }
 
+    let pendingRefresh = false;
+
     async function getSermons(fresh = false) {
-        // Guard first: resetting page/sermons before checking `loading` drops a
-        // second search/sort-change/refresh fired while a request is already in
-        // flight — the stale response then repopulates the list for the old
-        // query. Only reset once we know this call will actually run.
-        if (loading.value || (!fresh && !hasMore.value)) return;
+        // Coalesce changes during a request, then fetch the latest filters.
+        if (loading.value) {
+            if (fresh) pendingRefresh = true;
+            return;
+        }
+        if (!fresh && !hasMore.value) return;
         if (fresh) {
             page.value = 1;
             sermons.value = [];
@@ -203,7 +109,8 @@ export const useSermonStore = defineStore('useSermonStore', () => {
         loading.value = true;
 
         const trimmedSearch = search.value.trim();
-        const isFirstUnfiltered = fresh && !trimmedSearch && !topicFilter.value && sort.value === 'recent';
+        const topicsQuery = sermonTopicQuery(topicFilter.value);
+        const isFirstUnfiltered = fresh && !trimmedSearch && !topicsQuery && sort.value === 'recent';
 
         try {
             // Skip the request entirely when unconfigured so a build without the
@@ -217,7 +124,7 @@ export const useSermonStore = defineStore('useSermonStore', () => {
                 offset: String((page.value - 1) * PAGE_SIZE),
             });
             if (trimmedSearch) params.set('search_vector', `plfts(english).${trimmedSearch}`);
-            if (topicFilter.value) params.set('topics', `cs.{${topicFilter.value}}`);
+            if (topicsQuery) params.set('topics', topicsQuery);
             params.set(
                 'order',
                 sort.value === 'oldest' ? 'published_at.asc'
@@ -228,6 +135,7 @@ export const useSermonStore = defineStore('useSermonStore', () => {
                 : 'featured.desc,published_at.desc',
             );
             const res = await axios.get(`${REST_URL}/sermons?${params}`, { headers: supabaseHeaders() });
+            if (pendingRefresh) return;
             const rows = (res.data ?? []).map(normalizeSermon);
             hasMore.value = rows.length > PAGE_SIZE;
             const pageRows = rows.slice(0, PAGE_SIZE);
@@ -239,6 +147,7 @@ export const useSermonStore = defineStore('useSermonStore', () => {
                 await refreshCache();
             }
         } catch (e: any) {
+            if (pendingRefresh) return;
             console.error('getSermons error', e);
             if (isFirstUnfiltered) {
                 const offline = !navigator.onLine || !e?.response;
@@ -252,6 +161,10 @@ export const useSermonStore = defineStore('useSermonStore', () => {
             }
         } finally {
             loading.value = false;
+            if (pendingRefresh) {
+                pendingRefresh = false;
+                await getSermons(true);
+            }
         }
     }
 
@@ -409,8 +322,8 @@ export const useSermonStore = defineStore('useSermonStore', () => {
         }
     }
 
-    /** Distinct topics across the catalog, for the filter chips. Best-effort:
-     *  chips are optional, so any failure degrades to an empty list. */
+    /** Distinct topics across the catalog, for the topic selector. Best-effort:
+     *  topics are optional, so any failure degrades to an empty list. */
     async function fetchTopics() {
         if (topics.value.length || !supabaseConfigured()) return;
         try {

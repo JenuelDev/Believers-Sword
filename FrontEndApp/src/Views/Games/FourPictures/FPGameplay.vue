@@ -22,12 +22,16 @@ const images = computed(() => {
     // Served by the gameimg:// custom protocol (Electron main → userData/Games/fp_images).
     return [level.value.image1, level.value.image2, level.value.image3, level.value.image4]
         .filter(Boolean)
-        .map((name) => `gameimg://img/${name}`);
+        .map((name) => window.isElectron ? `gameimg://img/${name}`
+            : `${store.fpImagesBasePath}${encodeURIComponent(name)}`);
 });
 
-function onImgError(e: Event) {
-    const el = e.target as HTMLImageElement;
-    el.style.visibility = 'hidden';
+const failedImages = ref<Set<string>>(new Set());
+function onImgError(src: string) { failedImages.value = new Set([...failedImages.value, src]); }
+function openClue(src: string) {
+    if (failedImages.value.has(src)) {
+        const failed = new Set(failedImages.value); failed.delete(src); failedImages.value = failed;
+    } else openLightbox(src);
 }
 
 function onKeyDown(e: KeyboardEvent) {
@@ -35,7 +39,7 @@ function onKeyDown(e: KeyboardEvent) {
         if (e.key === 'Escape') closeLightbox();
         return;
     }
-    if (store.gameState !== 'playing') return;
+    if (store.gameState !== 'playing' || store.isBusy || store.error) return;
     const letter = e.key.toUpperCase();
     if (/^[A-Z]$/.test(letter)) {
         store.fpTapLetter(letter);
@@ -63,7 +67,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown));
                     size="small"
                     :focusable="false"
                     title="Back to games"
-                    @click="emit('exit')"
+                    :disabled="store.isBusy" @click="emit('exit')"
                 ><span class="text-base leading-none mr-1">&larr;</span> Back</NButton>
                 <h2 class="text-lg font-bold text-[var(--theme-text)]">4 Pictures 1 Word</h2>
             </div>
@@ -81,7 +85,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown));
             <p class="text-4xl">🏆</p>
             <p class="text-xl font-bold text-[var(--theme-text)]">All levels complete!</p>
             <p class="text-[var(--theme-text-soft)]">You solved all {{ store.fpProgressSummary.total }} levels.</p>
-            <NButton size="large" :color="ACCENT" :focusable="false" @click="emit('exit')">Back to Hub</NButton>
+            <NButton size="large" :color="ACCENT" :focusable="false" :disabled="store.isBusy" @click="emit('exit')">Back to Hub</NButton>
         </div>
 
         <!-- Game over -->
@@ -95,11 +99,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown));
                 <NButton
                     size="large"
                     :color="ACCENT"
-                    :disabled="!store.canPlay"
+                    :disabled="!store.canPlay || store.isBusy"
                     :focusable="false"
                     @click="store.startFPGame()"
                 >Try Again</NButton>
-                <NButton size="large" :focusable="false" @click="emit('exit')">Exit</NButton>
+                <NButton size="large" :focusable="false" :disabled="store.isBusy" @click="emit('exit')">Exit</NButton>
             </div>
         </div>
 
@@ -111,9 +115,10 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown));
                     :key="i"
                     type="button"
                     class="block p-0 border-0 aspect-square w-full rounded-xl overflow-hidden bg-[var(--theme-bg-soft)] cursor-zoom-in"
-                    @click="openLightbox(src)"
+                    @click="openClue(src)"
                 >
-                    <img :src="src" class="w-full h-full object-cover" :alt="`clue ${i + 1}`" @error="onImgError" />
+                    <span v-if="failedImages.has(src)" class="block p-3 text-sm text-[var(--theme-text)]">Clue unavailable. Click to retry.</span>
+                    <img v-else :src="src" class="w-full h-full object-cover" :alt="`clue ${i + 1}`" @error="onImgError(src)" />
                 </button>
             </div>
 
@@ -130,7 +135,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown));
                 >{{ letter }}</div>
             </div>
 
-            <!-- Letter tray (one letter per tile — used tiles are hidden) -->
+            <!-- Letter tray (one letter per tile , used tiles are hidden) -->
             <div class="flex gap-2 justify-center flex-wrap pt-2">
                 <template v-for="(letter, i) in store.fpScrambledLetters" :key="i">
                     <NButton
@@ -139,6 +144,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown));
                         strong
                         size="large"
                         :focusable="false"
+                        :disabled="store.isBusy || Boolean(store.error)"
                         :style="{ width: '2.75rem', height: '3rem', fontWeight: 700 }"
                         @click="store.fpTapTrayLetter(i)"
                     >{{ letter }}</NButton>
