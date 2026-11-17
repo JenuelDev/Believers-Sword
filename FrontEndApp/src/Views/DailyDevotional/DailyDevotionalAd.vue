@@ -103,6 +103,18 @@ onBeforeUnmount(() => {
     margin: 0 0 16px;
 }
 
+/* Remove native borders from injected ad frames, including blank replacements. */
+.devotion-ad :deep(iframe) {
+    border: 0;
+}
+
+/* Give blank replacement frames the same footprint as the banner slot. */
+.devotion-ad :deep(.adsbygoogle > iframe) {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
 .devotion-ad-label {
     display: flex;
     justify-content: flex-end;
