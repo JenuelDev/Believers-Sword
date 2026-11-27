@@ -1,10 +1,11 @@
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { defineStore } from 'pinia';
 import { getBibleService } from '../services/BibleService';
 import { useBibleStore } from './BibleStore';
 import { useSettingStore } from './settingStore';
-import { bibleBooks, type BookInfo } from '../util/books';
+import { bibleBooks, bookTitleByNumber, type BookInfo } from '../util/books';
 import { stripVerseHtml } from '../util/helper';
+import SESSION from '../util/session';
 
 export type ImmersiveChapterDirection = 'next' | 'prev';
 
@@ -16,6 +17,7 @@ export interface ImmersiveVerse {
 const DEFAULT_FONT_SIZE = 18;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 36;
+const FONT_SIZE_KEY = 'immersive-reader-font-size';
 
 function chapterCount(book: BookInfo, showDeuterocanonical: boolean): number {
     if (showDeuterocanonical && book.deuterocanonical_chapter_count) {
@@ -31,7 +33,7 @@ function normalizeVerses(result: any): ImmersiveVerse[] {
         .filter((row) => row && Number.isFinite(Number(row.verse)))
         .map((row) => ({
             verse: Number(row.verse),
-            text: stripVerseHtml(String(row.version?.[0]?.text ?? '')),
+            text: stripVerseHtml(String(row.version?.[0]?.text ?? ''), true),
         }))
         .filter((row) => row.text.length > 0);
 }
@@ -47,12 +49,14 @@ export const useImmersiveReaderStore = defineStore('immersiveReader', () => {
     const activeBookNumber = ref(0);
     const activeChapter = ref(1);
     const selectedVersion = ref('');
-    const fontSize = ref(DEFAULT_FONT_SIZE);
+    const savedFontSize = Number(SESSION.get(FONT_SIZE_KEY));
+    const fontSize = ref(Number.isFinite(savedFontSize) && savedFontSize >= MIN_FONT_SIZE
+        ? Math.min(MAX_FONT_SIZE, savedFontSize) : DEFAULT_FONT_SIZE);
+    watch(fontSize, value => SESSION.set(FONT_SIZE_KEY, value));
 
     const bookTitle = computed(() => {
-        return bibleBooks.find((book) => book.book_number === activeBookNumber.value)?.title ?? '';
+        return bookTitleByNumber(activeBookNumber.value) ?? '';
     });
-    const chapterNumber = computed(() => activeChapter.value);
 
     let requestId = 0;
     let windowModeRequest = Promise.resolve();
@@ -69,18 +73,19 @@ export const useImmersiveReaderStore = defineStore('immersiveReader', () => {
         // Keep rapid open/close/re-open transitions ordered without making
         // the reading surface depend on native window IPC succeeding.
         windowModeRequest = windowModeRequest
-            .catch(() => undefined)
             .then(() => window.browserWindow.setImmersiveWindowMode(enabled))
             .catch(() => undefined);
     }
 
     function visibleBooks(): BookInfo[] {
         return bibleBooks.filter(
-            (book) => settingStore.showDeuterocanonical || !book.deuterocanonical,
+            (book) => settingStore.showDeuterocanonical || !book.deuterocanonical
+                || book.book_number === activeBookNumber.value,
         );
     }
 
     async function loadChapter(bookNumber: number, chapter: number, version: string) {
+        if (!version) return;
         const currentRequest = ++requestId;
         activeBookNumber.value = bookNumber;
         activeChapter.value = chapter;
@@ -90,7 +95,7 @@ export const useImmersiveReaderStore = defineStore('immersiveReader', () => {
 
         try {
             const result = await getBibleService().getVerses({
-                bible_versions: version ? [version] : [],
+                bible_versions: [version],
                 book_number: bookNumber,
                 selected_chapter: chapter,
             });
@@ -147,6 +152,7 @@ export const useImmersiveReaderStore = defineStore('immersiveReader', () => {
     }
 
     async function navigateChapter(direction: ImmersiveChapterDirection) {
+        if (!isOpen.value || isLoading.value || !selectedVersion.value) return;
         const books = visibleBooks();
         const currentIndex = books.findIndex(
             (book) => book.book_number === activeBookNumber.value,
@@ -193,7 +199,6 @@ export const useImmersiveReaderStore = defineStore('immersiveReader', () => {
         verses,
         activeBookNumber,
         activeChapter,
-        chapterNumber,
         bookTitle,
         selectedVersion,
         fontSize,

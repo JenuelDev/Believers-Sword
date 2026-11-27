@@ -2,6 +2,8 @@ import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
 import axios from 'axios';
 import { runSync, runPullSync, resetSyncBackoff } from '../util/Sync/sync';
+import { createAuthSessionSync } from './auth/authSessionSync';
+import { createAuthProfile } from './auth/authProfile';
 
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/api`;
 
@@ -55,13 +57,7 @@ export const useAuthStore = defineStore('authStore', () => {
     const services = computed<string[]>(() => user.value?.services ?? []);
     const hasService = (service: string) => services.value.includes(service);
 
-    // AI requires the `ai` service (granted by Pro). The backend also gates
-    // every AI request.
-
-    // Sync is a paid feature (the `sync` service, granted by Sync and Pro).
-    // Every sync execution path gates on this so sync never runs for an
-    // unentitled account, even if a stale `sync_enabled` preference is loaded
-    // before services resolve at startup.
+    // Upload entitlement is independent of authenticated downloads.
     const isSyncEntitled = computed(() => hasService('sync'));
 
     // Display tier derived from the services, for plan labels/badges/pricing:
@@ -157,7 +153,6 @@ export const useAuthStore = defineStore('authStore', () => {
                 user.value = response.data.user;
                 token.value = response.data.token;
                 isAuthenticated.value = true;
-                // syncEnabled follows the subscription tier (see watch below).
 
                 localStorage.setItem('auth_token', response.data.token);
 
@@ -277,7 +272,6 @@ export const useAuthStore = defineStore('authStore', () => {
         }).then((response) => {
             if (response.data.status === 'success') {
                 user.value = response.data.user;
-                // syncEnabled follows the subscription tier (see watch below).
                 return response.data.user as User;
             }
             return null;
@@ -440,10 +434,6 @@ export const useAuthStore = defineStore('authStore', () => {
         });
     }
 
-    function cleanupListeners() {
-        window.removeEventListener('online', onOnline);
-    }
-
     async function onOnline() {
         if (!isAuthenticated.value) return;
         // If we were offline at startup, user may be null and syncEnabled may be stale.
@@ -455,9 +445,9 @@ export const useAuthStore = defineStore('authStore', () => {
         if (!pendingSettingsUpdate.value) loadSettings();
         // Clear backoff so reconnect triggers an immediate sync rather than waiting
         // out a cooldown that was set during the offline period.
-        if (syncEnabled.value) {
+        if (window.isElectron) {
             resetSyncBackoff();
-            runSync();
+            runPullSync();
         }
     }
 
@@ -466,245 +456,12 @@ export const useAuthStore = defineStore('authStore', () => {
      * `sync` service). There is no stored toggle; sync runs whenever entitled.
      */
     const syncEnabled = computed(() => isSyncEntitled.value);
-    const lastSyncAt = ref<string | null>(null);
-    let syncInterval: ReturnType<typeof setInterval> | null = null;
-    let lastFocusPullAt = 0;
-
-    function startSyncInterval() {
-        if (syncInterval) return;
-        // On login/startup: push any pending local changes, then pull remote state
-        flushPendingSettings().then(() => runSync());
-        // Periodic pull-only every 5 minutes — never auto-pushes without user action
-        syncInterval = setInterval(runPullSync, 5 * 60 * 1_000);
-        window.addEventListener('focus', onFocus);
-    }
-
-    async function onFocus() {
-        // Throttle: don't pull more than once per minute on focus
-        const now = Date.now();
-        if (now - lastFocusPullAt < 60_000) return;
-        lastFocusPullAt = now;
-        await flushPendingSettings();
-        runPullSync();
-    }
-
-    function stopSyncInterval() {
-        if (syncInterval) {
-            clearInterval(syncInterval);
-            syncInterval = null;
-        }
-        window.removeEventListener('focus', onFocus);
-    }
-
-    async function loadLastSyncAt() {
-        try {
-            const ts = await window.browserWindow.getLastSyncTimestamp();
-            lastSyncAt.value = ts && ts !== '0' ? ts : null;
-        } catch {
-            // best-effort
-        }
-    }
-
-    // Sync is entitlement-driven: `syncEnabled` is a computed of the `sync`
-    // service, so this watch starts/stops the sync interval whenever entitlement
-    // changes (login, purchase, lapse). `immediate` covers a cached-session start.
-    watch(syncEnabled, (enabled) => {
-        if (enabled && isAuthenticated.value) {
-            startSyncInterval();
-        } else {
-            stopSyncInterval();
-        }
-    }, { immediate: true });
-
-    watch(isAuthenticated, (authenticated) => {
-        if (!authenticated) {
-            stopSyncInterval();
-            cleanupListeners();
-        } else if (syncEnabled.value) {
-            startSyncInterval();
-        }
+    const { lastSyncAt, loadLastSyncAt } = createAuthSessionSync({
+        isAuthenticated, token, flushPendingSettings,
     });
 
-    async function forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
-        try {
-            const response = await axios.post(`${API_BASE_URL}/auth/forgot-password`, { email });
-            return {
-                success: response.data.status === 'success',
-                message: response.data.message ?? 'Failed to send reset link',
-            };
-        } catch (error: any) {
-            return {
-                success: false,
-                message: error.response?.data?.message || error.message || 'Failed to send reset link',
-            };
-        }
-    }
-
-    async function updateProfile(
-        data: { name?: string; username?: string; email?: string }
-    ): Promise<{ success: boolean; message?: string; emailVerificationSent?: boolean }> {
-        if (!token.value) return { success: false, message: 'Not authenticated' };
-        try {
-            const response = await axios.patch(`${API_BASE_URL}/auth/profile`, data, {
-                headers: { Authorization: `Bearer ${token.value}` },
-            });
-            if (response.data.status === 'success') {
-                user.value = response.data.user;
-                return { success: true, emailVerificationSent: response.data.email_verification_sent === true };
-            }
-            return { success: false, message: 'Failed to update profile' };
-        } catch (error: any) {
-            const validationErrors = error.response?.data?.errors;
-            const firstError = validationErrors
-                ? Object.values(validationErrors).flat()[0] as string
-                : null;
-            return {
-                success: false,
-                message: firstError || error.response?.data?.message || error.message || 'Failed to update profile',
-            };
-        }
-    }
-
-    async function updateUserInfo(
-        data: { denomination?: string | null }
-    ): Promise<{ success: boolean; message?: string }> {
-        if (!token.value) return { success: false, message: 'Not authenticated' };
-        try {
-            const response = await axios.patch(`${API_BASE_URL}/user-info`, data, {
-                headers: { Authorization: `Bearer ${token.value}` },
-            });
-            if (response.data.status === 'success') {
-                if (user.value) {
-                    user.value = { ...user.value, info: response.data.info };
-                }
-                return { success: true };
-            }
-            return { success: false, message: 'Failed to update info' };
-        } catch (error: any) {
-            return {
-                success: false,
-                message: error.response?.data?.message || error.message || 'Failed to update info',
-            };
-        }
-    }
-
-    function fileToDataUrl(file: File): Promise<string> {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload  = (e) => resolve(e.target!.result as string);
-            reader.onerror = () => reject(new Error('FileReader failed'));
-            reader.readAsDataURL(file);
-        });
-    }
-
-    /**
-     * Set profile picture.
-     * For default app pictures pass `{ type: 'default', name: 'app_profile1.png' }`.
-     * For custom uploads pass `{ type: 'upload', file: File }` — the file must
-     * already be compressed to < 60 KB by the caller.
-     */
-    async function updateProfilePicture(
-        payload: { type: 'default'; name: string } | { type: 'upload'; files: Record<number, File> }
-    ): Promise<{ success: boolean; message?: string; profile_picture?: string }> {
-        if (!token.value) return { success: false, message: 'Not authenticated' };
-
-        try {
-            const form = new FormData();
-            form.append('type', payload.type);
-            if (payload.type === 'default') {
-                form.append('name', payload.name);
-            } else {
-                for (const [size, file] of Object.entries(payload.files)) {
-                    form.append(`image_${size}`, file);
-                }
-            }
-
-            const response = await axios.post(`${API_BASE_URL}/user-info/profile-picture`, form, {
-                headers: {
-                    Authorization: `Bearer ${token.value}`,
-                    'Content-Type': 'multipart/form-data',
-                },
-            });
-
-            if (response.data.status === 'success') {
-                if (user.value) {
-                    user.value = { ...user.value, info: response.data.info };
-                }
-
-                if (payload.type === 'upload') {
-                    // Cache the 400px version locally so it shows offline next launch.
-                    try {
-                        const file400 = payload.files[400];
-                        if (file400) {
-                            const dataUrl = await fileToDataUrl(file400);
-                            localAvatarKey.value   = response.data.profile_picture;
-                            localAvatarCache.value = dataUrl;
-                            localStorage.setItem('profile_avatar_key',  response.data.profile_picture);
-                            localStorage.setItem('profile_avatar_data', dataUrl);
-                        }
-                    } catch { /* non-critical */ }
-                } else {
-                    // Switched to a default avatar — clear any old custom cache.
-                    localAvatarKey.value   = null;
-                    localAvatarCache.value = null;
-                    localStorage.removeItem('profile_avatar_key');
-                    localStorage.removeItem('profile_avatar_data');
-                }
-
-                return { success: true, profile_picture: response.data.profile_picture };
-            }
-            return { success: false, message: 'Failed to update profile picture' };
-        } catch (error: any) {
-            return {
-                success: false,
-                message: error.response?.data?.message || error.message || 'Failed to update profile picture',
-            };
-        }
-    }
-
-    async function resendVerification(): Promise<{ success: boolean; message: string; alreadyVerified?: boolean }> {
-        if (!token.value) return { success: false, message: 'Not authenticated' };
-        try {
-            const response = await axios.post(`${API_BASE_URL}/auth/resend-verification`, {}, {
-                headers: { Authorization: `Bearer ${token.value}` },
-            });
-            return {
-                success: response.data.status === 'success',
-                message: response.data.message ?? 'Verification email sent.',
-                alreadyVerified: response.data.already_verified === true,
-            };
-        } catch (error: any) {
-            return {
-                success: false,
-                message: error.response?.data?.message || error.message || 'Failed to send verification email',
-            };
-        }
-    }
-
-    async function resetPassword(
-        token: string,
-        email: string,
-        password: string,
-        passwordConfirmation: string,
-    ): Promise<{ success: boolean; message: string }> {
-        try {
-            const response = await axios.post(`${API_BASE_URL}/auth/reset-password`, {
-                token,
-                email,
-                password,
-                password_confirmation: passwordConfirmation,
-            });
-            return {
-                success: response.data.status === 'success',
-                message: response.data.message ?? 'Failed to reset password',
-            };
-        } catch (error: any) {
-            return {
-                success: false,
-                message: error.response?.data?.message || error.message || 'Failed to reset password',
-            };
-        }
-    }
+    const { forgotPassword, resetPassword, updateProfile, updateUserInfo, updateProfilePicture, resendVerification } =
+        createAuthProfile(API_BASE_URL, token, user, localAvatarKey, localAvatarCache);
 
     return {
         user,

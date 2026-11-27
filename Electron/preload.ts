@@ -211,10 +211,22 @@ contextBridge.exposeInMainWorld('browserWindow', {
     writeClipboard: (text: string) => ipcRenderer.invoke('writeClipboard', text),
 
     // Cross References
+    getCrossReferencePage: (args: {
+        book_number: number; chapter: number; verse: number;
+        bible_versions: string[]; offset?: number; limit?: number;
+    }) => ipcRenderer.invoke('getCrossReferencePage', args),
     getCrossReferences: (args: { book_number: number; chapter: number; verse: number }) =>
         ipcRenderer.invoke('getCrossReferences', args),
     getVerseText: (args: { bible_versions: string[]; book_number: number; chapter: number; verse: number }) =>
         ipcRenderer.invoke('getVerseText', args),
+
+    // Grow — Bible Questions (read-only offline library)
+    getBibleQuestionCategories: () => ipcRenderer.invoke('bibleQuestions:categories'),
+    getBibleQuestionPage: (args: { search: string; category: string; offset: number; limit: number }) =>
+        ipcRenderer.invoke('bibleQuestions:page', args),
+    getBibleQuestionAnswers: (questionId: number) => ipcRenderer.invoke('bibleQuestions:answers', questionId),
+    openBibleQuestionWindow: (question: { id: number; question: string; category: string; answer_count: number }) =>
+        ipcRenderer.invoke('bibleQuestions:openWindow', question),
 
     // Games — lives
     gameGetLives: () => ipcRenderer.invoke('game:getLives'),

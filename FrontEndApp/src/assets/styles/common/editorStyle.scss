@@ -151,14 +151,16 @@
         white-space: nowrap;
         background-color: none;
 
-        &.is-active {
+        &.is-active,
+        &.n-button.is-active {
             background-color: var(--primary-color);
-            color: #0d0d0d;
+            // Specificity preserves contrast against custom-theme button overrides.
+            color: var(--primary-foreground, #fff) !important;
             border-radius: 3px;
 
             &:hover {
                 background-color: var(--primary-color) !important;
-                color: #0d0d0d !important;
+                color: var(--primary-foreground, #fff) !important;
                 border-radius: 3px !important;
             }
         }

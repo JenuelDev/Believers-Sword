@@ -60,7 +60,8 @@ function splashPosition(): { x: number; y: number } | null {
     return null;
 }
 
-function resolveTheme(): Required<SplashTheme> {
+/** The user's saved theme colors (also used to pre-paint popup windows). */
+export function resolveTheme(): Required<SplashTheme> {
     const saved = (appConfig.get('setting.splashTheme') as SplashTheme | undefined) || {};
     const pick = (v: string | undefined, fallback: string) =>
         typeof v === 'string' && v.trim() ? v.trim() : fallback;

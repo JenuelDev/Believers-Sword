@@ -7,6 +7,7 @@ import LoginPage from './../Views/UserProfile/Pages/Login.vue';
 import ProfileAccountPage from './../Views/UserProfile/Pages/Profile/Profile.vue';
 import UserProfileLayout from './../Views/UserProfile/Profile.vue';
 import CompareVerse from '../Views/CompareVerse/CompareVerse.vue';
+import BibleQuestionWindow from '../Views/Grow/BibleQuestions/BibleQuestionWindow.vue';
 import DailyDevotional from '../Views/DailyDevotional/DailyDevotional.vue';
 
 export const routes: Array<RouteRecordRaw> = [
@@ -57,18 +58,22 @@ export const routes: Array<RouteRecordRaw> = [
         component: CompareVerse,
     },
     {
+        // Desktop popup window for one Grow > Bible Question. Static like
+        // CompareVerse so the window doesn't wait on an extra chunk.
+        name: 'BibleQuestion',
+        path: '/bible-question',
+        component: BibleQuestionWindow,
+    },
+    {
         name: 'DailyDevotional',
         path: '/daily-devotional',
         component: DailyDevotional,
     },
     {
-        // Bible Games — Electron-only (needs bundled game DBs + local progress).
-        // Lazy-loaded so the web bundle never pulls it in; the guard redirects
-        // any web user who reaches it.
+        // Native games use IPC; browser games use the published content API.
         name: 'Games',
         path: '/games',
         component: () => import('../Views/Games/Games.vue'),
-        beforeEnter: () => (window.isElectron ? true : { name: 'PrayerList' }),
     },
 ];
 const router = createRouter({
@@ -77,13 +82,13 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
-    // The desktop (Electron) build stores everything locally — no account needed.
+    // The desktop (Electron) build stores everything locally , no account needed.
     if (window.isElectron) return true;
     if (to.meta?.public) return true;
 
     // Web is free, but still requires a signed-in account: the browser build has
     // no local database, so the backend IS its storage. Subscription tier is not
-    // checked here — Sync (carrying this data to phone/desktop) is the paid
+    // checked here , Sync (carrying this data to phone/desktop) is the paid
     // feature, not web access itself.
     if (!localStorage.getItem('auth_token')) return { name: 'Login' };
 

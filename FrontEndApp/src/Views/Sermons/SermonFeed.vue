@@ -5,6 +5,7 @@ import { useSermonStore, SermonType } from '../../store/Sermons';
 import { useInfiniteScroll } from '@vueuse/core';
 import { DAYJS } from '../../util/dayjs';
 import { Icon } from '@iconify/vue';
+import { ALL_SERMON_TOPICS, normalizeTopicSelection } from '../../store/sermons/sermonTopics';
 
 const emit = defineEmits<{
     (e: 'open', sermon: SermonType): void;
@@ -30,9 +31,16 @@ const sortOptions = [
     { label: 'Oldest', value: 'oldest' },
 ];
 
-function selectTopic(topic: string) {
-    sermonStore.topicFilter = topic;
-    sermonStore.getSermons(true);
+const selectedTopics = ref<string[]>([...sermonStore.topicFilter]);
+const topicOptions = computed(() => [
+    { label: 'All', value: ALL_SERMON_TOPICS },
+    ...sermonStore.topics.map((topic) => ({ label: topic, value: topic })),
+]);
+
+function selectTopics(values: string[] | null) {
+    selectedTopics.value = normalizeTopicSelection(values, selectedTopics.value);
+    sermonStore.topicFilter = selectedTopics.value.filter((topic) => topic !== ALL_SERMON_TOPICS);
+    void sermonStore.getSermons(true);
 }
 
 function formatDate(d: string | null) {
@@ -66,7 +74,7 @@ const emptyState = computed(() => {
             sub: 'Something went wrong reaching the server. Please try again in a moment.',
         };
     }
-    if (sermonStore.search || sermonStore.topicFilter) {
+    if (sermonStore.search || sermonStore.topicFilter.length) {
         return {
             icon: 'mdi:magnify',
             title: 'No sermons match',
@@ -115,21 +123,21 @@ const emptyState = computed(() => {
             </NButton>
         </div>
 
-        <!-- Topic pills -->
-        <div class="category-pills" v-if="sermonStore.topics.length">
-            <button
-                class="cat-pill"
-                :class="{ active: sermonStore.topicFilter === '' }"
-                @click="selectTopic('')"
-            >All</button>
-            <button
-                v-for="topic in sermonStore.topics"
-                :key="topic"
-                class="cat-pill"
-                :class="{ active: sermonStore.topicFilter === topic }"
-                @click="selectTopic(topic)"
-            >{{ topic }}</button>
-        </div>
+        <!-- Clearable topic filter shared by desktop and web. -->
+        <NSelect
+            v-if="sermonStore.topics.length"
+            :value="selectedTopics"
+            :options="topicOptions"
+            multiple
+            clearable
+            filterable
+            :max-tag-count="3"
+            size="small"
+            placeholder="All topics"
+            aria-label="Filter sermons by topics"
+            class="topic-select"
+            @update:value="selectTopics"
+        />
 
         <!-- Sermon grid -->
         <div ref="browseEl" class="sermon-grid-scroll">
@@ -230,30 +238,12 @@ const emptyState = computed(() => {
 }
 .browse-search { flex: 1; min-width: 180px; max-width: 320px; }
 
-/* ── Topic pills ── */
-.category-pills {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
+/* Topic multi-select stays compact while the sermon grid fills the page. */
+.topic-select {
+    width: 100%;
+    max-width: 520px;
     margin-bottom: 12px;
-}
-.cat-pill {
-    padding: 4px 12px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    background: var(--theme-bg-soft, rgba(255,255,255,0.06));
-    border: 1px solid var(--theme-border, rgba(255,255,255,0.1));
-    color: inherit;
-    transition: background 0.15s, border-color 0.15s;
-    white-space: nowrap;
-}
-.cat-pill:hover { background: var(--theme-bg-elevated, rgba(255,255,255,0.1)); }
-.cat-pill.active {
-    background: color-mix(in srgb, var(--primary-color, #6f84ff) 20%, transparent);
-    border-color: color-mix(in srgb, var(--primary-color, #6f84ff) 60%, transparent);
-    color: var(--primary-color, #6f84ff);
+    flex-shrink: 0;
 }
 
 /* ── Scrollable area ── */

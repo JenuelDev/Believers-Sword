@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { onBeforeMount, ref, watch } from 'vue';
 import SESSION from '../util/session';
+import { getPrimaryForeground } from '../util/primaryForeground';
 import { getTheme, themesOptions, typeNameInterface } from '../util/themes';
 import { appearanceThemeOptions, backgroundThemeType } from '../util/appearanceThemes';
 import { useAuthStore } from './authStore';
@@ -216,6 +217,7 @@ export const useThemeStore = defineStore('useThemeStore', () => {
 
     function changeTheRootProperty() {
         document.documentElement.style.setProperty('--primary-color', themeOverrides.value.common.primaryColor);
+        document.documentElement.style.setProperty('--primary-foreground', getPrimaryForeground(themeOverrides.value.common.primaryColor));
         document.documentElement.style.setProperty('--primary-color-light', themeOverrides.value.common.primaryColorHover);
     }
 

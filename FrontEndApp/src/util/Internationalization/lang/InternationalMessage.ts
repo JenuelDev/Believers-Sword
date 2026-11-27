@@ -1,4 +1,19 @@
 export interface InternationalMessageInterface {
+    immersive?: {
+        open: string;
+        title: string;
+        leave: string;
+        loading: string;
+        unavailable: string;
+        empty: string;
+        shortcuts: string;
+        textSize: string;
+        previous: string;
+        next: string;
+        scroll: string;
+        range: string;
+        hint: string;
+    };
     title: string;
     'read-bible': string;
     Sermons: string;

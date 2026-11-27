@@ -12,29 +12,16 @@
  *   - window/OS    -> no-op
  */
 
-import { apiFetch, fetchPagedList } from './webBridge/http';
+import { apiRequest, apiFetch, fetchPagedList } from './webBridge/http';
+import { createBibleVerseLoader } from './webBridge/bibleVerseCache';
+import { createNoteBridge } from './webBridge/notes';
 import { createStreakBridge } from './webBridge/streakDays';
+import { createDevotionalBridge } from './webBridge/devotional';
+import { createCrossReferenceBridge } from './webBridge/crossReferences';
+import { createBibleQuestionBridge } from './webBridge/bibleQuestions';
+import { createGameBridge } from './webBridge/games';
 
-const bibleVersesCache = new Map<string, Promise<any[]>>();
-
-function buildBibleVersesPath(version: string, bookNumber: number, chapter: number) {
-    const params = new URLSearchParams();
-    params.append('versions[]', version);
-    params.set('book_number', String(bookNumber));
-    params.set('chapter', String(chapter));
-
-    return `/bible/verses?${params}`;
-}
-
-function getBibleVersesRows(version: string, bookNumber: number, chapter: number) {
-    const path = buildBibleVersesPath(version, bookNumber, chapter);
-    const cached = bibleVersesCache.get(path);
-    if (cached) return cached;
-
-    const request = apiFetch<any[]>(path, []);
-    bibleVersesCache.set(path, request);
-    return request;
-}
+const getBibleVersesRows = createBibleVerseLoader((path) => apiRequest<any[]>(path));
 
 function mergeVerseRows(target: any[], rows: any[], fallbackVersion: string) {
     rows.forEach((row: any) => {
@@ -74,7 +61,7 @@ function warnOnce(method: string) {
     if (warned.has(method)) return;
     warned.add(method);
     // eslint-disable-next-line no-console
-    console.warn(`[webBridge] ${method} is not implemented on web — returning a stub.`);
+    console.warn(`[webBridge] ${method} is not implemented on web , returning a stub.`);
 }
 
 /**
@@ -83,7 +70,7 @@ function warnOnce(method: string) {
  * Entries are static public-domain data, so each successful lookup is kept in
  * localStorage for a few days. Reopening the same Strong's popover then serves
  * straight from the cache instead of re-hitting the API. Desktop doesn't use
- * this — it reads its bundled SQLite DB over IPC.
+ * this , it reads its bundled SQLite DB over IPC.
  */
 const STRONGS_CACHE_PREFIX = 'strongs-cache:';
 const STRONGS_CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
@@ -110,7 +97,7 @@ function writeStrongsCache(key: string, value: unknown): void {
             JSON.stringify({ v: value, exp: Date.now() + STRONGS_CACHE_TTL_MS }),
         );
     } catch {
-        /* localStorage full or unavailable (e.g. private mode) — caching is best-effort */
+        /* localStorage full or unavailable (e.g. private mode) , caching is best-effort */
     }
 }
 
@@ -126,14 +113,17 @@ const stub: Window['browserWindow'] = {
     }),
     isWindowBrowserMaximized: async () => false,
     closeWindow: async () => { warnOnce('closeWindow'); },
+    closeCurrentWindow: async () => { warnOnce('closeCurrentWindow'); },
+    // The web opens questions in a dialog instead of a window.
+    openBibleQuestionWindow: async () => { warnOnce('openBibleQuestionWindow'); },
     maximizeWindow: async () => { warnOnce('maximizeWindow'); },
     minimizeWindow: async () => { warnOnce('minimizeWindow'); },
     onWindowMaximized: () => { warnOnce('onWindowMaximized'); },
     getAppScale: async () => 1,
     setAppScale: async (scale: number) => scale,
-    setImmersiveWindowMode: async () => { /* no-op on web — immersive mode is Electron-only */ },
-    appReady: () => { /* no-op on web — no splash window */ },
-    setSplashTheme: async () => { /* no-op on web — no splash window */ },
+    setImmersiveWindowMode: async () => { /* Electron only */ },
+    appReady: () => { /* no-op on web , no splash window */ },
+    setSplashTheme: async () => { /* no-op on web , no splash window */ },
 
     // ---------- Bible reads ----------
     getAvailableBibles: async () => apiFetch('/bible/version-details', [] as string[]),
@@ -143,7 +133,7 @@ const stub: Window['browserWindow'] = {
         const selectedVersions = bible_versions as string[];
         const responses = await Promise.all(
             selectedVersions.map((version) =>
-                getBibleVersesRows(version, book_number, selected_chapter),
+                getBibleVersesRows(version, book_number, selected_chapter).catch(() => []),
             ),
         );
 
@@ -253,13 +243,7 @@ const stub: Window['browserWindow'] = {
     openDonateWindow: () => { warnOnce('openDonateWindow'); },
 
     // ---------- Notes ----------
-    getNotes: async () => apiFetch('/notes', []),
-    upsertNote: async (args: { note_id: string; title: string; content: string }) => {
-        return apiFetch('/notes', null, { method: 'POST', body: JSON.stringify(args) });
-    },
-    deleteNote: async (args: { note_id: string }) => {
-        return apiFetch(`/notes/${encodeURIComponent(args.note_id)}`, null, { method: 'DELETE' });
-    },
+    ...createNoteBridge(apiRequest),
 
     // ---------- Dictionary ----------
     searchDictionary: async () => [],
@@ -284,7 +268,7 @@ const stub: Window['browserWindow'] = {
         return entry;
     },
 
-    // ---------- Piper TTS (drop on web — Web Speech API fallback) ----------
+    // ---------- Piper TTS (drop on web , Web Speech API fallback) ----------
     piperStatus: async () => ({ binaryReady: false, modelReady: false, modelName: '' }),
     piperInstall: async () => ({ success: false, error: 'Piper TTS is not available on web' }),
     piperUninstall: async () => ({ success: false, error: 'Piper TTS is not available on web' }),
@@ -313,7 +297,7 @@ const stub: Window['browserWindow'] = {
     onUpdateProgress: () => { /* no-op */ },
     onUpdateDownloaded: () => { /* no-op */ },
 
-    // ---------- Bible Import (drop on web — no FS access) ----------
+    // ---------- Bible Import (drop on web , no FS access) ----------
     importBibleSelectFile: async () => ({ canceled: true }),
     importBibleValidate: async () => ({ valid: false, error: 'Bible import is not available on web' }),
     importBibleCheckDuplicate: async () => ({ exists: false }),
@@ -354,8 +338,8 @@ const stub: Window['browserWindow'] = {
     // Favorites are real on web, unlike every other web write in this file.
     // Web has no local SQLite and cannot use the sync protocol (util/Sync/sync.ts
     // runs entirely through window.browserWindow, which is *this* shim), so the
-    // backend is its only store. Sermon BODIES are not in the backend — it keeps
-    // uuids only — so getSermonFavorites returns stub rows and the store
+    // backend is its only store. Sermon BODIES are not in the backend , it keeps
+    // uuids only , so getSermonFavorites returns stub rows and the store
     // hydrates them from Supabase, exactly as it does for a synced favorite on
     // desktop.
     replaceCachedSermons: async () => ({ success: false, error: 'Not available on web' }),
@@ -394,7 +378,7 @@ const stub: Window['browserWindow'] = {
             : { success: false, error: 'Failed to save favorite' };
     },
 
-    // Web has no local store to refresh — the backend only ever holds the
+    // Web has no local store to refresh , the backend only ever holds the
     // uuid, so there is no payload to persist. loadFavorites only calls this
     // behind an `isElectron` check; the in-memory favorites list is where a
     // hydrated body lives on web.
@@ -422,53 +406,15 @@ const stub: Window['browserWindow'] = {
     // ---------- Clipboard ----------
     writeClipboard: async (text: string) => { await navigator.clipboard.writeText(text); },
 
-    // ---------- Cross References ----------
     // ---------- Devotional ----------
-    getTodayDevotional: async (languageCode: string = 'en') => {
-        const params = new URLSearchParams({ lang: languageCode });
-        return apiFetch(`/devotional/today?${params}`, null);
-    },
-    getDevotionalByDay: async (day: number, languageCode: string = 'en') => {
-        const params = new URLSearchParams({ lang: languageCode });
-        return apiFetch(`/devotional/${day}?${params}`, null);
-    },
+    ...createDevotionalBridge(apiFetch),
 
-    getCrossReferences: async (args) => {
-        const params = new URLSearchParams({
-            book_number: String(args.book_number),
-            chapter: String(args.chapter),
-            verse: String(args.verse),
-        });
-        return apiFetch(`/cross-references?${params}`, []);
-    },
-    getVerseText: async (args) => {
-        const { bible_versions, book_number, chapter, verse } = args;
-        const params = new URLSearchParams();
-        (bible_versions as string[]).forEach((v) => params.append('versions[]', v));
-        params.set('book_number', String(book_number));
-        params.set('chapter', String(chapter));
-        params.set('verse', String(verse));
-        return apiFetch(`/bible/verse-text?${params}`, []);
-    },
+    // ---------- Cross References ----------
+    ...createCrossReferenceBridge(),
+    ...createBibleQuestionBridge(apiFetch),
 
-    // ---------- Games (Electron-only — the /games route redirects web users) ----------
-    gameGetLives: async () => 7,
-    gameLoseLife: async () => 7,
-    gameNextRecoveryAt: async () => null,
-    gameRefillLives: async () => { /* no-op */ },
-    gameResetProgress: async () => { /* no-op */ },
-    qaGetGroups: async () => [],
-    qaGetQuestionsForGroup: async () => [],
-    qaGetAllGroupProgress: async () => [],
-    qaSaveGroupProgress: async () => ({ newlyPassed: false }),
-    tfGetGroups: async () => [],
-    tfGetStatementsForGroup: async () => [],
-    tfGetAllGroupProgress: async () => [],
-    tfSaveGroupProgress: async () => ({ newlyPassed: false }),
-    fpGetLevels: async () => [],
-    fpGetSolvedLevelIds: async () => [],
-    fpMarkLevelSolved: async () => { /* no-op */ },
-    fpGetImagesBasePath: async () => '',
+    // ---------- Games ----------
+    ...createGameBridge(),
 
     // ---------- Close-to-tray (desktop-only; no tray on web) ----------
     getCloseToTray: async () => false,
@@ -479,7 +425,7 @@ const stub: Window['browserWindow'] = {
     setReminderEnabled: async (value: boolean) => { warnOnce('setReminderEnabled'); return value; },
     getReminderAutoStart: async () => false,
     setReminderAutoStart: async (value: boolean) => { warnOnce('setReminderAutoStart'); return value; },
-    reminderRecordActivity: async () => { /* no-op on web — no tray/scheduler */ },
+    reminderRecordActivity: async () => { /* no-op on web , no tray/scheduler */ },
 };
 
 export function installWebBridge() {

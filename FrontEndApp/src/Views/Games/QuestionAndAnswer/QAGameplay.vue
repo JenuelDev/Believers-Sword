@@ -29,7 +29,7 @@ function answerProps(i: number) {
 <template>
     <div class="space-y-4">
         <div class="flex items-center justify-between">
-            <NButton quaternary size="small" :focusable="false" @click="emit('back')">
+            <NButton quaternary size="small" :focusable="false" :disabled="store.isBusy" @click="emit('back')">
                 <span class="text-base leading-none mr-1">&larr;</span> Groups
             </NButton>
             <div class="flex items-center gap-3 text-sm text-[var(--theme-text-soft)]">
@@ -53,7 +53,7 @@ function answerProps(i: number) {
                     {{ store.gameState === 'completed' ? (store.newlyPassed ? 'Passed!' : 'Completed!') : 'Out of lives' }}
                 </p>
                 <p class="text-sm text-[var(--theme-text-soft)]">
-                    {{ store.gameState === 'gameOver' ? 'Better luck next time' : store.newlyPassed ? 'Great job — you cleared this group!' : 'Keep practicing to pass' }}
+                    {{ store.gameState === 'gameOver' ? 'Better luck next time' : store.newlyPassed ? 'Great job , you cleared this group!' : 'Keep practicing to pass' }}
                 </p>
             </div>
 
@@ -69,8 +69,8 @@ function answerProps(i: number) {
             </div>
 
             <div class="flex gap-3 pt-1">
-                <NButton class="flex-1" size="large" :color="ACCENT" :focusable="false" @click="emit('back')">Back to Groups</NButton>
-                <NButton class="flex-1" size="large" :focusable="false" @click="emit('exit')">Exit</NButton>
+                <NButton class="flex-1" size="large" :color="ACCENT" :focusable="false" :disabled="store.isBusy" @click="emit('back')">Back to Groups</NButton>
+                <NButton class="flex-1" size="large" :focusable="false" :disabled="store.isBusy" @click="emit('exit')">Exit</NButton>
             </div>
         </div>
 
@@ -90,6 +90,7 @@ function answerProps(i: number) {
                     class="game-answer-btn"
                     :focusable="false"
                     v-bind="answerProps(i)"
+                    :disabled="store.isBusy || store.gameState !== 'playing'"
                     @click="store.submitQAAnswer(i)"
                 >{{ opt }}</NButton>
             </div>
@@ -99,7 +100,7 @@ function answerProps(i: number) {
                     <p v-if="question.proof" class="font-medium text-[var(--theme-text-soft)]">{{ formatProofReference(question.proof) }}</p>
                     <p v-if="question.explanation">{{ stripVerseHtml(question.explanation) }}</p>
                 </div>
-                <NButton block size="large" :color="ACCENT" :focusable="false" @click="store.nextQAQuestion()">
+                <NButton block size="large" :color="ACCENT" :focusable="false" :loading="store.isBusy" :disabled="store.isBusy" @click="store.nextQAQuestion()">
                     {{ store.currentIndex + 1 >= store.totalItems ? 'Finish' : 'Next' }}
                 </NButton>
             </template>

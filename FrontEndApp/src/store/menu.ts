@@ -95,8 +95,7 @@ export const useMenuStore = defineStore('useMenuStore', () => {
         // '/profile',
         '/settings-page',
         '/donate-page',
-        // Games is desktop-only (bundled game DBs + local progress).
-        ...(window.isElectron ? ['/games'] : []),
+        '/games',
     ]);
     watch(
         () => enableTab.value,
@@ -150,7 +149,7 @@ export const useMenuStore = defineStore('useMenuStore', () => {
         // for saved tabs
         let savedLocalTabsKey = session.get(localSavedTabsKey);
         if (savedLocalTabsKey) {
-            // The AI Assistant was removed — strip it from existing saved
+            // The AI Assistant was removed , strip it from existing saved
             // tab lists so nobody keeps a tab pointing at a dead route.
             if (savedLocalTabsKey.includes('/ai-assistant')) {
                 savedLocalTabsKey = savedLocalTabsKey.filter(
@@ -158,13 +157,9 @@ export const useMenuStore = defineStore('useMenuStore', () => {
                 );
                 session.set(localSavedTabsKey, savedLocalTabsKey);
             }
-            // Games is desktop-only: add it for existing Electron users, and
-            // strip any stale entry from a web profile.
-            if (window.isElectron && !savedLocalTabsKey.includes('/games')) {
+            // Make games available to existing desktop and web profiles.
+            if (!savedLocalTabsKey.includes('/games')) {
                 savedLocalTabsKey.push('/games');
-                session.set(localSavedTabsKey, savedLocalTabsKey);
-            } else if (!window.isElectron && savedLocalTabsKey.includes('/games')) {
-                savedLocalTabsKey = savedLocalTabsKey.filter((t: string) => t !== '/games');
                 session.set(localSavedTabsKey, savedLocalTabsKey);
             }
             // Sermons moved under the Grow hub: migrate saved tab lists.
@@ -176,7 +171,7 @@ export const useMenuStore = defineStore('useMenuStore', () => {
             }
             // '/create-sermon' was removed when sermons became a read-only
             // catalog. Strip it from saved tab lists, and move a saved
-            // selection off it below — otherwise a returning user lands on a
+            // selection off it below , otherwise a returning user lands on a
             // route that no longer exists.
             if (savedLocalTabsKey.includes('/create-sermon')) {
                 savedLocalTabsKey = savedLocalTabsKey.filter(

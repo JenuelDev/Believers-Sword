@@ -1,160 +1,143 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
-import { NEmpty, NSpin, NScrollbar, NPopover, NSkeleton, NButton } from 'naive-ui';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { NButton, NEmpty, NSpin, NVirtualList } from 'naive-ui';
 import { useCrossReferencesStore } from '../../../store/crossReferencesStore';
 import { useBibleStore } from '../../../store/BibleStore';
-import { useModuleStore } from '../../../store/moduleStore';
 import { bibleBooks } from '../../../util/books';
-import { stripVerseHtml } from '../../../util/helper';
+import CrossReferenceCard from './CrossReferenceCard.vue';
 
 const crossRefStore = useCrossReferencesStore();
 const bibleStore = useBibleStore();
-const moduleStore = useModuleStore();
+const virtualList = ref<InstanceType<typeof NVirtualList> | null>(null);
+const colors = ['#c44ab0', '#71a93d', '#26a9ad', '#cc9651', '#7a85d6'];
+const items = computed(() => crossRefStore.references.map((reference, index, references) => ({
+    key: reference.id,
+    reference,
+    group: index === 0 || references[index - 1].to_book !== reference.to_book
+        ? {
+            count: crossRefStore.groups.find(group => group.book_number === reference.to_book)?.count ?? 0,
+            color: colors[crossRefStore.groups.findIndex(group => group.book_number === reference.to_book) % colors.length],
+        }
+        : undefined,
+})));
+const sourceBook = computed(() => bibleBooks.find(book => book.book_number === bibleStore.selectedBookNumber));
 
-type VerseTextResult = { version: string; text: string };
-const popoverTexts = ref<VerseTextResult[]>([]);
-const popoverLoading = ref(false);
-const activePopoverIndex = ref<number | null>(null);
-
-function getBookShortName(book_number: number): string {
-    const book = bibleBooks.find((b) => b.book_number === book_number);
-    return book ? book.short_name : String(book_number);
-}
-
-function formatRef(toBook: number, toChapter: number, toVerseStart: number, toVerseEnd: number) {
-    const bookName = getBookShortName(toBook);
-    const verseRange = toVerseEnd !== toVerseStart ? `${toVerseStart}-${toVerseEnd}` : String(toVerseStart);
-    return `${bookName} ${toChapter}:${verseRange}`;
-}
-
-function getVersionTitle(fileName: string): string {
-    const found = moduleStore.bibleLists.find((b: any) => b.file_name === fileName);
-    return found ? found.title : fileName.replace('.SQLite3', '');
-}
-
-async function navigateTo(book_number: number, chapter: number, verse: number) {
-    activePopoverIndex.value = null;
-    await bibleStore.selectVerse(book_number, chapter, verse);
-}
-
-async function onPopoverShow(ref: { to_book: number; to_chapter: number; to_verse_start: number }) {
-    popoverTexts.value = [];
-    popoverLoading.value = true;
-    try {
-        popoverTexts.value = await window.browserWindow.getVerseText({
-            bible_versions: [...bibleStore.selectedBibleVersions],
-            book_number: ref.to_book,
-            chapter: ref.to_chapter,
-            verse: ref.to_verse_start,
-        });
-    } catch (e) {
-        console.error('getVerseText failed:', e);
-    } finally {
-        popoverLoading.value = false;
-    }
-}
-
-async function load() {
-    const { selectedBookNumber, selectedChapter, selectedVerse } = bibleStore;
-    if (selectedBookNumber && selectedChapter && selectedVerse) {
-        await crossRefStore.fetchReferences(selectedBookNumber, selectedChapter, selectedVerse);
+function checkForNextPage() {
+    if (crossRefStore.isLoading || crossRefStore.error || !crossRefStore.hasMore) return;
+    const container = virtualList.value?.getScrollContainer();
+    // Hidden tabs have no viewport and should not prefetch additional pages.
+    if (container && container.clientHeight > 0
+        && container.scrollHeight - container.scrollTop - container.clientHeight < 240) {
+        void crossRefStore.loadMore();
     }
 }
 
 watch(
-    () => [bibleStore.selectedBookNumber, bibleStore.selectedChapter, bibleStore.selectedVerse],
-    () => load(),
+    () => [bibleStore.selectedBookNumber, bibleStore.selectedChapter, bibleStore.selectedVerse,
+        ...bibleStore.selectedBibleVersions],
+    async () => {
+        const { selectedBookNumber, selectedChapter, selectedVerse, selectedBibleVersions } = bibleStore;
+        if (!selectedBookNumber || !selectedChapter || !selectedVerse) {
+            crossRefStore.clear();
+            return;
+        }
+        const loading = crossRefStore.fetchReferences(
+            selectedBookNumber, selectedChapter, selectedVerse, [...selectedBibleVersions],
+        );
+        virtualList.value?.scrollTo({ top: 0, behavior: 'auto' });
+        await loading;
+        await nextTick();
+        checkForNextPage();
+    },
+    { immediate: true },
 );
 
-onMounted(() => load());
+watch(() => crossRefStore.references.length, async () => {
+    await nextTick();
+    checkForNextPage();
+});
+
+onBeforeUnmount(() => crossRefStore.clear());
 </script>
 
 <template>
-    <div class="h-full flex flex-col p-2 gap-2">
-        <div class="text-xs text-gray-500 dark:text-gray-400 font-500 shrink-0">
-            Cross References for
-            <span class="font-700 text-[var(--primary-color)]">
-                {{ getBookShortName(bibleStore.selectedBookNumber) }}
-                {{ bibleStore.selectedChapter }}:{{ bibleStore.selectedVerse }}
+    <section class="cross-reference-panel relative h-full flex flex-col p-2 gap-2 min-h-0" aria-label="Cross references">
+        <div class="text-xs text-gray-500 dark:text-gray-400 shrink-0 flex items-center gap-2">
+            <span>
+                Cross References for
+                <strong class="text-[var(--primary-color)]">
+                    {{ sourceBook ? $t(sourceBook.title) : bibleStore.selectedBookNumber }}
+                    {{ bibleStore.selectedChapter }}:{{ bibleStore.selectedVerse }}
+                </strong>
             </span>
+            <span v-if="crossRefStore.total" class="opacity-70">({{ crossRefStore.total }})</span>
         </div>
 
-        <div class="flex-1 min-h-0 relative">
-            <NScrollbar class="h-full">
-                <NEmpty
-                    v-if="!crossRefStore.isLoading && !crossRefStore.references.length"
-                    description="No cross references found"
-                    size="small"
-                    class="py-4"
-                />
-
-                <div class="flex flex-wrap gap-1.5 pr-1 pb-3">
-                    <NPopover
-                        v-for="(ref, index) in crossRefStore.references"
-                        :key="index"
-                        :show="activePopoverIndex === index"
-                        trigger="manual"
-                        placement="top"
-                        :width="320"
-                        @clickoutside="activePopoverIndex = null"
-                    >
-                        <template #trigger>
-                            <span
-                                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-500 cursor-pointer border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-[var(--primary-color)] hover:text-[var(--primary-color)] transition-all duration-150 select-none whitespace-nowrap"
-                                @click="activePopoverIndex = index; onPopoverShow(ref)"
-                            >
-                                {{ formatRef(ref.to_book, ref.to_chapter, ref.to_verse_start, ref.to_verse_end) }}
-                            </span>
-                        </template>
-
-                        <div class="flex flex-col" style="max-height: 260px;">
-                            <!-- Header: fixed -->
-                            <div class="flex items-center justify-between gap-2 pb-2 shrink-0">
-                                <span class="text-xs font-700 text-[var(--primary-color)]">
-                                    {{ formatRef(ref.to_book, ref.to_chapter, ref.to_verse_start, ref.to_verse_end) }}
-                                </span>
-                                <NButton
-                                    size="tiny"
-                                    type="primary"
-                                    secondary
-                                    @click="navigateTo(ref.to_book, ref.to_chapter, ref.to_verse_start)"
-                                >
-                                    Go to verse
-                                </NButton>
-                            </div>
-
-                            <!-- Scrollable content -->
-                            <NScrollbar style="max-height: 200px;">
-                                <div class="flex flex-col gap-3 pr-1">
-                                    <NSkeleton v-if="popoverLoading" text :repeat="3" />
-
-                                    <div
-                                        v-for="item in popoverTexts"
-                                        :key="item.version"
-                                        class="flex flex-col gap-1"
-                                    >
-                                        <div class="text-[10px] font-600 text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-                                            {{ getVersionTitle(item.version) }}
-                                        </div>
-                                        <div class="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{{ stripVerseHtml(item.text) }}</div>
-                                    </div>
-
-                                    <div v-if="!popoverLoading && !popoverTexts.length" class="text-xs text-gray-400">
-                                        No text available
-                                    </div>
-                                </div>
-                            </NScrollbar>
-                        </div>
-                    </NPopover>
-                </div>
-            </NScrollbar>
-
-            <div
-                v-if="crossRefStore.isLoading"
-                class="absolute inset-0 flex items-center justify-center bg-white/60 dark:bg-dark-800/60"
+        <!-- Keep Chromium's native wheel scrolling, as used by the reading
+             panels. Stop propagation before the virtualizer's wheel handler
+             replaces native motion with raw scrollTop jumps. Do not prevent
+             the default action: actual scroll events still update the list. -->
+        <div
+            v-if="items.length"
+            class="cross-reference-scroll-viewport flex flex-col flex-1 min-h-0 overflow-hidden"
+            @wheel.capture.stop
+        >
+            <NVirtualList
+                ref="virtualList"
+                class="cross-reference-list flex-1 min-h-0"
+                :items="items"
+                :item-size="180"
+                item-resizable
+                :padding-bottom="12"
+                @scroll="checkForNextPage"
+                @resize="checkForNextPage"
             >
-                <NSpin size="small" />
-            </div>
+                <template #default="{ item }">
+                    <CrossReferenceCard :reference="item.reference" :group="item.group" />
+                </template>
+            </NVirtualList>
         </div>
-    </div>
+
+        <div v-if="crossRefStore.isLoading" class="cross-reference-status cross-reference-loading" :class="{ 'cross-reference-status-overlay': items.length }" role="status">
+            <NSpin size="small" /><span>Loading references...</span>
+        </div>
+        <div v-else-if="crossRefStore.error" class="cross-reference-status" :class="{ 'cross-reference-status-overlay': items.length }" role="alert">
+            <span>{{ crossRefStore.error }}</span>
+            <NButton size="tiny" @click="crossRefStore.loadMore()">Retry</NButton>
+        </div>
+        <NEmpty
+            v-else-if="!items.length"
+            description="No cross references found"
+            size="small"
+            class="py-4"
+        />
+    </section>
 </template>
+
+<style scoped>
+.cross-reference-list { overflow-anchor: none; }
+.cross-reference-list :deep(*) { scroll-behavior: auto; }
+.cross-reference-status {
+    display: flex;
+    flex-shrink: 0;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    font-size: 12px;
+}
+.cross-reference-status-overlay {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 32px);
+    z-index: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--theme-border);
+    border-radius: 8px;
+    background: var(--theme-bg-elevated);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+}
+.cross-reference-loading.cross-reference-status-overlay { pointer-events: none; }
+</style>

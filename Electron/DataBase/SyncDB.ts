@@ -1,4 +1,5 @@
 import { StoreDB } from './DataBase';
+import type { Knex } from 'knex';
 
 export type SyncLogEntry = {
     id?: number;
@@ -22,7 +23,7 @@ export type SyncSetting = {
 /**
  * Log a data change for sync tracking
  */
-export async function logSyncChange(entry: SyncLogEntry): Promise<{ action: string; id: number }> {
+export async function logSyncChange(entry: SyncLogEntry, executor: Knex | Knex.Transaction = StoreDB): Promise<{ action: string; id: number }> {
     // Store as explicit UTC ISO8601 (e.g. 2026-06-01T10:00:00.000Z) rather than
     // a raw Date, so the `timestamp` we later push is unambiguously UTC and
     // matches the mobile client. The backend uses this for last-write-wins
@@ -39,7 +40,7 @@ export async function logSyncChange(entry: SyncLogEntry): Promise<{ action: stri
         updated_at: now,
     };
 
-    const id = await StoreDB('sync_logs').insert(data);
+    const id = await executor('sync_logs').insert(data);
     return { action: 'logged', id: id[0] };
 }
 

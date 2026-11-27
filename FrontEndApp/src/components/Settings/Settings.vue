@@ -15,9 +15,11 @@ import Notifications from './Notifications/Notifications.vue';
 import BibleSetting from './Bible/BibleSetting.vue';
 import { Icon } from '@iconify/vue';
 import { useMainStore } from '../../store/main';
-import { computed } from 'vue';
+import { computed, defineAsyncComponent } from 'vue';
 
 const mainStore = useMainStore();
+const showDebug = import.meta.env.DEV && Boolean(window.isElectron);
+const DebugSettings = defineAsyncComponent(() => import('./Debug/DebugSettings.vue'));
 const name = computed({
     get: () => mainStore.settingsTab,
     set: (v) => { mainStore.settingsTab = v; },
@@ -82,6 +84,15 @@ const name = computed({
                         <p class="text-xs opacity-50 mb-4">{{ $t('verse-reader-desc') }}</p>
                         <VerseReaderSetting />
                     </div>
+                </NTabPane>
+                <NTabPane v-if="showDebug" class="h-full overflow-y-auto overflowing-div" name="Debug">
+                    <template #tab>
+                        <span class="flex items-center gap-1">
+                            <Icon icon="mdi:bug-outline" style="font-size: 16px;" />
+                            Debug
+                        </span>
+                    </template>
+                    <DebugSettings />
                 </NTabPane>
             </NTabs>
         </div>

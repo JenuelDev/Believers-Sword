@@ -25,9 +25,13 @@ import DevotionDays from './DevotionDays/DevotionDays';
 import Games from './Games/Games';
 import ReminderEvents from './Reminders/Reminders';
 import { InfographicsEvents } from '../Grow/Infographics';
+import { BibleQuestionsEvents } from '../Grow/BibleQuestions';
+import { BibleQuestionWindowEvents } from '../Windows/BibleQuestionWindow';
 
 export default (BrowserWindow: BrowserWindow) => {
     InfographicsEvents(BrowserWindow);
+    BibleQuestionsEvents();
+    BibleQuestionWindowEvents();
     // Version Events
     ipcVersionEvents();
 

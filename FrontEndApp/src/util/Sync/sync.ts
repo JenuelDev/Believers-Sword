@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { applyPullPage } from './applyPullPage';
+import { healCursorOnce } from './cursorHeal';
 import { useAuthStore } from '../../store/authStore';
 import useNoteStore from '../../store/useNoteStore';
 import { useBookmarkStore } from '../../store/bookmark';
@@ -12,6 +14,17 @@ import { useGamesStore } from '../../store/useGamesStore';
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/api`;
 
 let isSyncing = false;
+let queuedPull = false;
+let queuedPullForce = false;
+
+function finishSync(): void {
+    isSyncing = false;
+    if (!queuedPull) return;
+    const force = queuedPullForce;
+    queuedPull = false;
+    queuedPullForce = false;
+    void runPullSync(force);
+}
 let consecutiveFailures = 0;
 let backoffUntil = 0;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -25,7 +38,7 @@ async function pushSync(token: string): Promise<number> {
 
     if (!unsyncedChanges.length) return 0;
 
-    const ALLOWED_TABLES = ['bookmarks', 'highlights', 'clip_notes', 'prayer_lists', 'prayer_days', 'devotion_days', 'notes', 'sermon_favorites', 'ai_conversations', 'game_lives', 'qa_group_progress', 'tf_group_progress'];
+    const ALLOWED_TABLES = ['bookmarks', 'highlights', 'clip_notes', 'prayer_lists', 'prayer_days', 'devotion_days', 'notes', 'sermon_favorites', 'ai_conversations', 'game_lives', 'qa_group_progress', 'tf_group_progress', 'fpow_level_progress'];
     const ALLOWED_ACTIONS = ['created', 'updated', 'deleted'];
 
     // Discard legacy entries: no record_key, unknown table name, or unknown action.
@@ -98,36 +111,11 @@ async function pushSync(token: string): Promise<number> {
  * Pull remote changes since the last sync timestamp and apply them locally.
  * Handles paginated responses — keeps fetching while `has_more` is true.
  */
-/** Key of the one-time cursor heal (see {@link healCursorOnce}). */
-const CURSOR_HEAL_KEY = 'cursor_heal_v1';
-
-/**
- * Hard cap on pages per pull cycle, so a server that stops advancing its cursor
- * can't spin the pull loop forever. Far above any real backlog — whatever is
- * left over is picked up by the next cycle.
- */
+/** Hard cap on an individual pull cycle. Incomplete cycles remain retryable. */
 const MAX_PULL_PAGES = 100;
 
-/**
- * One-time full re-pull, run once per device.
- *
- * The server used to hand back a cursor that could sort *above* rows written
- * during that same request (sub-second precision against whole-second columns,
- * stamped after the queries ran). A client only ever asks for rows newer than
- * its stored cursor and never revisits an older one, so those rows were skipped
- * permanently — no later sync recovered them. Devices still holding such a
- * cursor need one `since = 0` pull to catch up. Every apply path is idempotent
- * (upsert / last-write-wins / MAX merges), so re-fetching everything only costs
- * bandwidth. No-op on web, where these bridge calls are stubs.
- */
-async function healCursorOnce(): Promise<void> {
-    if (await window.browserWindow.getSyncSetting(CURSOR_HEAL_KEY)) return;
-    await window.browserWindow.updateLastSyncTimestamp('0');
-    await window.browserWindow.setSyncSetting(CURSOR_HEAL_KEY, true);
-}
-
 async function pullSync(token: string): Promise<void> {
-    await healCursorOnce();
+    await healCursorOnce(window.browserWindow);
 
     let since: string = await window.browserWindow.getLastSyncTimestamp();
     let pages = 0;
@@ -138,41 +126,28 @@ async function pullSync(token: string): Promise<void> {
             headers: { Authorization: `Bearer ${token}` },
         });
 
-        if (response.data.status !== 'success') return;
+        if (response.data.status !== 'success') throw new Error('The sync response was not successful.');
 
-        const { sync_logs, bookmarks, highlights, clip_notes, prayer_lists, prayer_days, devotion_days, notes, sermon_favorites, ai_conversations, settings, game_lives, qa_group_progress, tf_group_progress, has_more, next_cursor, last_sync_timestamp } = response.data;
+        const { settings, has_more, next_cursor } = response.data;
         const authStore = useAuthStore();
+        if (!authStore.isAuthenticated || authStore.token !== token) {
+            throw new Error('The sync session changed during download.');
+        }
 
-        await window.browserWindow.applyPullData({
-            sync_logs,
-            bookmarks,
-            highlights,
-            clip_notes,
-            prayer_lists,
-            prayer_days,
-            devotion_days,
-            notes,
-            sermon_favorites,
-            ai_conversations,
-            settings,
-            game_lives,
-            qa_group_progress,
-            tf_group_progress,
-        });
+        await applyPullPage(window.browserWindow, response.data);
 
         if (settings && !authStore.pendingSettingsUpdate) {
             authStore.remoteSettings = settings;
         }
 
-        if (has_more && next_cursor) {
+        if (has_more) {
+            if (!next_cursor) throw new Error('The next sync page is missing.');
             since = next_cursor;
         } else {
-            if (last_sync_timestamp) {
-                await window.browserWindow.updateLastSyncTimestamp(last_sync_timestamp);
-            }
-            break;
+            return;
         }
     }
+    throw new Error('The sync download did not finish within the page limit.');
 }
 
 /**
@@ -243,7 +218,7 @@ export async function runPushSync(): Promise<void> {
         const data = error?.response?.data;
         console.error(`[Sync] Push error (HTTP ${status ?? 'network'}), retry in ${delaySec}s:`, data ?? error?.message ?? error);
     } finally {
-        isSyncing = false;
+        finishSync();
     }
 }
 
@@ -251,23 +226,28 @@ export async function runPushSync(): Promise<void> {
  * Pull-only sync — fetches remote changes without pushing local ones.
  * Used by the periodic timer so the desktop never auto-pushes without user action.
  */
-export async function runPullSync(): Promise<void> {
-    if (isSyncing) return;
-    if (Date.now() < backoffUntil) return;
+export async function runPullSync(force = false): Promise<void> {
+    if (isSyncing) {
+        queuedPull = true;
+        queuedPullForce = queuedPullForce || force;
+        return;
+    }
 
     const authStore = useAuthStore();
-    // Sync is a paid feature — never run it for a Free account, even if a stale
-    // `syncEnabled` preference is set before the tier resolves.
-    if (!authStore.isSyncEntitled || !authStore.syncEnabled || !authStore.isAuthenticated || !authStore.token) return;
+    if (!authStore.isAuthenticated || !authStore.token) return;
+    if (!force && Date.now() < backoffUntil) return;
+    const token = authStore.token;
 
     isSyncing = true;
     try {
-        await pullSync(authStore.token);
+        if (!authStore.isAuthenticated || token !== authStore.token) return;
+        await pullSync(token);
         consecutiveFailures = 0;
         backoffUntil = 0;
         authStore.loadLastSyncAt();
         reloadStoresAfterPull();
     } catch (error: any) {
+        if (!authStore.isAuthenticated || token !== authStore.token) return;
         const status = error?.response?.status;
         if (status === 401) {
             console.warn('[Sync] Token rejected (401) — logging out.');
@@ -284,7 +264,7 @@ export async function runPullSync(): Promise<void> {
         const data = error?.response?.data;
         console.error(`[Sync] Pull error (HTTP ${status ?? 'network'}), retry in ${delaySec}s:`, data ?? error?.message ?? error);
     } finally {
-        isSyncing = false;
+        finishSync();
     }
 }
 
@@ -329,6 +309,6 @@ export async function runSync(): Promise<void> {
         const data = error?.response?.data;
         console.error(`[Sync] Error (HTTP ${status ?? 'network'}), retry in ${delaySec}s:`, data ?? error?.message ?? error);
     } finally {
-        isSyncing = false;
+        finishSync();
     }
 }

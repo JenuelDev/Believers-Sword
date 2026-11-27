@@ -27,7 +27,7 @@ function tfBtnProps(isTrue: boolean) {
 <template>
     <div class="space-y-4">
         <div class="flex items-center justify-between">
-            <NButton quaternary size="small" :focusable="false" @click="emit('back')">
+            <NButton quaternary size="small" :focusable="false" :disabled="store.isBusy" @click="emit('back')">
                 <span class="text-base leading-none mr-1">&larr;</span> Groups
             </NButton>
             <div class="flex items-center gap-3 text-sm text-[var(--theme-text-soft)]">
@@ -50,7 +50,7 @@ function tfBtnProps(isTrue: boolean) {
                     {{ store.gameState === 'completed' ? (store.newlyPassed ? 'Passed!' : 'Completed!') : 'Out of lives' }}
                 </p>
                 <p class="text-sm text-[var(--theme-text-soft)]">
-                    {{ store.gameState === 'gameOver' ? 'Better luck next time' : store.newlyPassed ? 'Great job — you cleared this group!' : 'Keep practicing to pass' }}
+                    {{ store.gameState === 'gameOver' ? 'Better luck next time' : store.newlyPassed ? 'Great job , you cleared this group!' : 'Keep practicing to pass' }}
                 </p>
             </div>
 
@@ -66,8 +66,8 @@ function tfBtnProps(isTrue: boolean) {
             </div>
 
             <div class="flex gap-3 pt-1">
-                <NButton class="flex-1" size="large" :color="ACCENT" :focusable="false" @click="emit('back')">Back to Groups</NButton>
-                <NButton class="flex-1" size="large" :focusable="false" @click="emit('exit')">Exit</NButton>
+                <NButton class="flex-1" size="large" :color="ACCENT" :focusable="false" :disabled="store.isBusy" @click="emit('back')">Back to Groups</NButton>
+                <NButton class="flex-1" size="large" :focusable="false" :disabled="store.isBusy" @click="emit('exit')">Exit</NButton>
             </div>
         </div>
 
@@ -84,7 +84,7 @@ function tfBtnProps(isTrue: boolean) {
                     class="tf-choice-btn"
                     :focusable="false"
                     v-bind="tfBtnProps(true)"
-                    @click="store.submitTFAnswer(true)"
+                    :disabled="store.isBusy || store.gameState !== 'playing'" @click="store.submitTFAnswer(true)"
                 >&check; True</NButton>
                 <NButton
                     block
@@ -92,7 +92,7 @@ function tfBtnProps(isTrue: boolean) {
                     class="tf-choice-btn"
                     :focusable="false"
                     v-bind="tfBtnProps(false)"
-                    @click="store.submitTFAnswer(false)"
+                    :disabled="store.isBusy || store.gameState !== 'playing'" @click="store.submitTFAnswer(false)"
                 >&times; False</NButton>
             </div>
 
@@ -101,7 +101,7 @@ function tfBtnProps(isTrue: boolean) {
                     <p v-if="statement.proof" class="font-medium text-[var(--theme-text-soft)]">{{ formatProofReference(statement.proof) }}</p>
                     <p v-if="statement.explanation">{{ stripVerseHtml(statement.explanation) }}</p>
                 </div>
-                <NButton block size="large" :color="ACCENT" :focusable="false" @click="store.nextTFQuestion()">
+                <NButton block size="large" :color="ACCENT" :focusable="false" :loading="store.isBusy" :disabled="store.isBusy" @click="store.nextTFQuestion()">
                     {{ store.currentIndex + 1 >= store.totalItems ? 'Finish' : 'Next' }}
                 </NButton>
             </template>

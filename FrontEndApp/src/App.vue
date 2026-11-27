@@ -30,20 +30,28 @@ import PlanModal from './components/PlanModal.vue';
 import FeedbackModal from './components/FeedbackModal.vue';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal.vue';
 import DonateModal from './components/Donate/DonateModal.vue';
+import OnboardingDialog from './components/Onboarding/OnboardingDialog.vue';
 import { useAuthStore } from './store/authStore';
 import FlipBook from './Views/ReadBible/FlipBook/FlipBook.vue';
 import ImmersiveReader from './Views/ReadBible/ImmersiveReader/ImmersiveReader.vue';
 import VersionSelectModal from './Views/ReadBible/FlipBook/VersionSelectModal.vue';
 import { useRoute, useRouter } from 'vue-router';
+import { isPopupHash } from './util/popupWindow';
 import { computed } from 'vue';
 
 const route = useRoute();
 const router = useRouter();
 const isElectron = Boolean(window.isElectron);
-const isPopupWindow = computed(() => route.name === 'CompareVerse' || (!window.isElectron && route.name === 'Login'));
+// Electron popup windows (Compare Verse, Bible Question) are known from the
+// start URL, before the first navigation resolves.
+const startsAsPopup = isPopupHash(window.location.hash);
+const isPopupWindow = computed(() => startsAsPopup || route.name === 'CompareVerse' || route.name === 'BibleQuestion'
+    || (!window.isElectron && route.name === 'Login'));
 
 const isMounted = ref(false);
 const authStore = useAuthStore();
+const canShowOnboarding = computed(() => isMounted.value && !isPopupWindow.value &&
+    (Boolean(window.isElectron) || authStore.isAuthenticated));
 
 // On web: redirect to /login when the token is invalidated (e.g. 401 response)
 watch(() => authStore.isAuthenticated, (authenticated) => {
@@ -106,6 +114,13 @@ onBeforeMount(async () => {
 });
 
 onMounted(async () => {
+    // Popups only show their own content: skip the main window's auth, sync,
+    // streak and reminder start-up work so they open quickly.
+    if (startsAsPopup) {
+        isMounted.value = true;
+        return;
+    }
+
     // Initialize auth (token + user + sync state) on every app launch
     authStore.initAuth();
 
@@ -141,9 +156,9 @@ onBeforeUnmount(() => {
                     <!-- Popup windows (e.g. Compare Verse) — no sidebar/titlebar/footer -->
                     <RouterView v-if="isPopupWindow" />
 
-                    <NLayout v-else class="h-[100vh] opacity-0 transition-all transform scale-50" :class="{'!opacity-100 !scale-100': isMounted}">
-                        <TitleBar class="h-[var(--header-height)]" />
-                        <NLayout class="h-[calc(100%-(var(--header-height)+var(--footer-height)))]" has-sider>
+                    <NLayout v-else class="app-shell opacity-0 transition-all transform scale-50" content-style="display: flex; flex-direction: column; height: 100%; overflow: hidden" :class="{'!opacity-100 !scale-100': isMounted}">
+                        <TitleBar class="h-[var(--header-height)] shrink-0" />
+                        <NLayout class="app-workspace" style="flex: 1 1 0; min-height: 0" has-sider>
                             <NLayoutSider
                                 bordered
                                 :collapsed="isSideBarCollapse"
@@ -205,7 +220,7 @@ onBeforeUnmount(() => {
                                 </div>
                             </NLayout>
                         </NLayout>
-                        <FooterComponent class="h-[var(--footer-height)]" size="tiny" />
+                        <FooterComponent class="h-[var(--footer-height)] shrink-0" size="tiny" />
                     </NLayout>
                     <AboutModal />
                     <SettingsModal />
@@ -216,12 +231,19 @@ onBeforeUnmount(() => {
                     <FeedbackModal />
                     <KeyboardShortcutsModal />
                     <DonateModal />
+                    <OnboardingDialog :eligible="canShowOnboarding" />
                 </NMessageProvider>
             </NNotificationProvider>
         </NDialogProvider>
     </NConfigProvider>
 </template>
 <style lang="scss">
+.app-shell {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+}
+
 .side-bar-menu {
     .n-scrollbar-content {
         height: 100%;

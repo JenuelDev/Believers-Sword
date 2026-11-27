@@ -1,6 +1,21 @@
 import { InternationalMessageType } from './InternationalMessage';
 
 const message: InternationalMessageType = {
+    immersive: {
+        open: 'Open immersive reader',
+        title: 'Immersive Scripture reader',
+        leave: 'Leave reader',
+        loading: 'Loading…',
+        unavailable: 'Scripture unavailable.',
+        empty: 'No Scripture found.',
+        shortcuts: 'Keyboard shortcuts',
+        textSize: 'Text size',
+        previous: 'Previous chapter',
+        next: 'Next chapter',
+        scroll: 'Scroll',
+        range: 'Start / end',
+        hint: 'Release {modifier} to hide. Shortcuts also work while held.',
+    },
     title: `Believers Sword`,
     'read-bible': 'Read Bible',
     Sermons: 'Sermons',

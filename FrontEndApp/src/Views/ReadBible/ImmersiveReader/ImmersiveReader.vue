@@ -1,10 +1,14 @@
 <script lang="ts" setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useImmersiveReaderStore } from '../../../store/immersiveReaderStore';
 
 const readerStore = useImmersiveReaderStore();
+const { t } = useI18n();
 
-const readingSurface = ref<HTMLElement | null>(null);
+const readingSurface = shallowRef<HTMLElement | null>(null);
+const closeButton = shallowRef<HTMLButtonElement | null>(null);
+let previousFocus: HTMLElement | null = null;
 const modifierHeld = ref(false);
 const isMac = ref(false);
 let navigationInFlight = false;
@@ -46,17 +50,36 @@ function handleKeydown(event: KeyboardEvent) {
     if (!readerStore.isOpen) return;
 
     updateModifierState(event);
-    // The reader owns keyboard input while open. Capture at document level so
-    // existing window/document shortcuts behind the overlay never receive it.
-    event.preventDefault();
+    // Keep application shortcuts behind the overlay quiet, while retaining
+    // native copy and operating-system shortcuts unless handled below.
     event.stopImmediatePropagation();
+    if (event.altKey || event.isComposing) return;
+    if (event.ctrlKey || event.metaKey) {
+        if (event.key.toLowerCase() === 'c') return;
+        if (event.key.toLowerCase() === 'a') {
+            event.preventDefault();
+            if (readingSurface.value) {
+                const range = document.createRange();
+                range.selectNodeContents(readingSurface.value);
+                const selection = window.getSelection();
+                selection?.removeAllRanges();
+                selection?.addRange(range);
+            }
+            return;
+        }
+    }
+    if (event.key === 'Tab') {
+        event.preventDefault();
+        closeButton.value?.focus();
+        return;
+    }
+    // Preserve native keyboard activation of the visible exit button.
+    if (event.target === closeButton.value && (event.key === ' ' || event.key === 'Enter')) return;
 
-    const commandModifierHeld = event.ctrlKey || event.metaKey || event.altKey;
-    const increaseTextKey = event.key === '+' || event.key === '=';
-
-    // Ctrl/Cmd is reserved for the shortcut sheet. Other modified navigation
-    // must also be ignored; Shift+= is allowed because it produces "+".
-    if (commandModifierHeld || (event.shiftKey && !increaseTextKey)) return;
+    const handledKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+        'Home', 'End', 'PageUp', 'PageDown', ' ', '+', '=', '-', 'Escape'];
+    if (!handledKeys.includes(event.key)) return;
+    event.preventDefault();
 
     switch (event.key) {
         case 'ArrowLeft':
@@ -71,6 +94,13 @@ function handleKeydown(event: KeyboardEvent) {
         case 'ArrowDown':
             scrollReadingSurface(160);
             break;
+        case 'PageUp':
+        case 'PageDown':
+        case ' ': {
+            const page = (readingSurface.value?.clientHeight ?? 500) * 0.9;
+            scrollReadingSurface(event.key === 'PageUp' || (event.key === ' ' && event.shiftKey) ? -page : page);
+            break;
+        }
         case 'Home':
             readingSurface.value?.scrollTo({ top: 0, behavior: 'smooth' });
             break;
@@ -110,6 +140,20 @@ function handleWindowBlur() {
     clearModifierState();
 }
 
+function handleCopy(event: ClipboardEvent) {
+    // Let the browser copy the native selection without the main reader's
+    // passage-copy handler substituting its own selected verses.
+    event.stopImmediatePropagation();
+}
+
+function removeListeners() {
+    document.removeEventListener('keydown', handleKeydown, captureListenerOptions);
+    document.removeEventListener('keyup', handleKeyup, captureListenerOptions);
+    document.removeEventListener('copy', handleCopy, captureListenerOptions);
+    window.removeEventListener('blur', handleWindowBlur);
+    document.removeEventListener('visibilitychange', handleWindowBlur);
+}
+
 function focusReadingSurface() {
     nextTick(() => readingSurface.value?.focus({ preventScroll: true }));
 }
@@ -118,32 +162,36 @@ watch(
     () => readerStore.isOpen,
     (isOpen) => {
         clearModifierState();
-        if (isOpen) focusReadingSurface();
+        removeListeners();
+        if (isOpen) {
+            previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            document.addEventListener('keydown', handleKeydown, captureListenerOptions);
+            document.addEventListener('keyup', handleKeyup, captureListenerOptions);
+            document.addEventListener('copy', handleCopy, captureListenerOptions);
+            window.addEventListener('blur', handleWindowBlur);
+            document.addEventListener('visibilitychange', handleWindowBlur);
+            focusReadingSurface();
+        } else {
+            nextTick(() => previousFocus?.isConnected && previousFocus.focus({ preventScroll: true }));
+        }
     },
+    { immediate: true, flush: 'post' },
 );
 
 watch(
-    () => [readerStore.bookTitle, readerStore.chapterNumber] as const,
+    () => [readerStore.bookTitle, readerStore.activeChapter] as const,
     () => {
         if (!readerStore.isOpen) return;
         nextTick(() => readingSurface.value?.scrollTo({ top: 0, behavior: 'auto' }));
     },
 );
 
-onMounted(() => {
-    isMac.value = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
-    document.addEventListener('keydown', handleKeydown, captureListenerOptions);
-    document.addEventListener('keyup', handleKeyup, captureListenerOptions);
-    window.addEventListener('blur', handleWindowBlur);
-    document.addEventListener('visibilitychange', handleWindowBlur);
-});
+isMac.value = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
 
 onUnmounted(() => {
-    document.removeEventListener('keydown', handleKeydown, captureListenerOptions);
-    document.removeEventListener('keyup', handleKeyup, captureListenerOptions);
-    window.removeEventListener('blur', handleWindowBlur);
-    document.removeEventListener('visibilitychange', handleWindowBlur);
+    removeListeners();
     clearModifierState();
+    if (readerStore.isOpen) readerStore.close();
 });
 </script>
 
@@ -154,30 +202,33 @@ onUnmounted(() => {
             class="immersive-reader"
             role="dialog"
             aria-modal="true"
-            aria-label="Immersive Scripture reader"
+            :aria-label="t('immersive.title')"
         >
+            <button ref="closeButton" type="button" class="immersive-reader__close" @click="readerStore.close()">
+                {{ t('immersive.leave') }} <span aria-hidden="true">(Esc)</span>
+            </button>
             <main ref="readingSurface" class="immersive-reader__scroll" tabindex="-1">
                 <article class="immersive-reader__page">
                     <header class="immersive-reader__heading">
                         <h1>
-                            <span>{{ readerStore.bookTitle }}</span>
-                            <span class="immersive-reader__chapter">{{ readerStore.chapterNumber }}</span>
+                            <span>{{ readerStore.bookTitle ? t(readerStore.bookTitle) : '' }}</span>
+                            <span class="immersive-reader__chapter">{{ readerStore.activeChapter }}</span>
                         </h1>
                     </header>
 
-                    <p v-if="readerStore.isLoading" class="immersive-reader__status" aria-live="polite">Loading…</p>
+                    <p v-if="readerStore.isLoading" class="immersive-reader__status" aria-live="polite">{{ t('immersive.loading') }}</p>
                     <p v-else-if="readerStore.loadError" class="immersive-reader__status" aria-live="polite">
-                        Scripture unavailable.
+                        {{ t('immersive.unavailable') }}
                     </p>
                     <p v-else-if="readerStore.verses.length === 0" class="immersive-reader__status" aria-live="polite">
-                        No Scripture found.
+                        {{ t('immersive.empty') }}
                     </p>
                     <div v-else class="immersive-reader__verses">
                         <p
                             v-for="(verse, index) in readerStore.verses"
                             :key="`${verse.verse}-${index}`"
                             class="immersive-reader__verse"
-                            :style="{ fontSize: `${readerStore.fontSize}px` }"
+                            :style="{ '--reader-font-size': `${readerStore.fontSize}px` }"
                         >
                             <span class="immersive-reader__verse-number">{{ verse.verse }}</span>
                             <span class="immersive-reader__verse-text">{{ verse.text }}</span>
@@ -186,50 +237,49 @@ onUnmounted(() => {
                 </article>
             </main>
 
-            <aside v-if="modifierHeld" class="immersive-reader__shortcuts" aria-label="Keyboard shortcuts">
-                <div class="immersive-reader__shortcut immersive-reader__shortcut--exit" aria-label="Escape: leave reader">
+            <aside v-if="modifierHeld" class="immersive-reader__shortcuts" :aria-label="t('immersive.shortcuts')">
+                <div class="immersive-reader__shortcut immersive-reader__shortcut--exit">
                     <kbd class="immersive-reader__key">Esc</kbd>
-                    <span class="immersive-reader__shortcut-label">Leave</span>
+                    <span class="immersive-reader__shortcut-label">{{ t('immersive.leave') }}</span>
                 </div>
 
-                <div class="immersive-reader__shortcut immersive-reader__shortcut--font" aria-label="Minus and plus: text size">
+                <div class="immersive-reader__shortcut immersive-reader__shortcut--font">
                     <span class="immersive-reader__keys">
                         <kbd class="immersive-reader__key">−</kbd>
                         <kbd class="immersive-reader__key">+</kbd>
                     </span>
-                    <span class="immersive-reader__shortcut-label">Text size</span>
+                    <span class="immersive-reader__shortcut-label">{{ t('immersive.textSize') }}</span>
                 </div>
 
                 <div
                     class="immersive-reader__shortcut immersive-reader__shortcut--previous"
-                    aria-label="Left arrow: previous chapter"
                 >
                     <kbd class="immersive-reader__key">←</kbd>
-                    <span class="immersive-reader__shortcut-label">Previous</span>
+                    <span class="immersive-reader__shortcut-label">{{ t('immersive.previous') }}</span>
                 </div>
 
-                <div class="immersive-reader__shortcut immersive-reader__shortcut--next" aria-label="Right arrow: next chapter">
-                    <span class="immersive-reader__shortcut-label">Next</span>
+                <div class="immersive-reader__shortcut immersive-reader__shortcut--next">
+                    <span class="immersive-reader__shortcut-label">{{ t('immersive.next') }}</span>
                     <kbd class="immersive-reader__key">→</kbd>
                 </div>
 
-                <div class="immersive-reader__shortcut immersive-reader__shortcut--scroll" aria-label="Up and down arrows: scroll">
+                <div class="immersive-reader__shortcut immersive-reader__shortcut--scroll">
                     <span class="immersive-reader__keys">
                         <kbd class="immersive-reader__key">↑</kbd>
                         <kbd class="immersive-reader__key">↓</kbd>
                     </span>
-                    <span class="immersive-reader__shortcut-label">Scroll</span>
+                    <span class="immersive-reader__shortcut-label">{{ t('immersive.scroll') }}</span>
                 </div>
 
-                <div class="immersive-reader__shortcut immersive-reader__shortcut--range" aria-label="Home and End: start or end">
+                <div class="immersive-reader__shortcut immersive-reader__shortcut--range">
                     <span class="immersive-reader__keys">
                         <kbd class="immersive-reader__key immersive-reader__key--wide">Home</kbd>
                         <kbd class="immersive-reader__key immersive-reader__key--wide">End</kbd>
                     </span>
-                    <span class="immersive-reader__shortcut-label">Start / end</span>
+                    <span class="immersive-reader__shortcut-label">{{ t('immersive.range') }}</span>
                 </div>
 
-                <p class="immersive-reader__shortcuts-hint">Release {{ modifierLabel }} to hide</p>
+                <p class="immersive-reader__shortcuts-hint">{{ t('immersive.hint', { modifier: modifierLabel }) }}</p>
             </aside>
         </div>
     </Teleport>
@@ -237,6 +287,7 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .immersive-reader {
+    -webkit-app-region: no-drag;
     position: fixed;
     inset: 0;
     z-index: 10000;
@@ -244,6 +295,19 @@ onUnmounted(() => {
     overflow: hidden;
     background: var(--theme-bg-main, #ffffff);
     color: var(--theme-text, #252525);
+}
+
+.immersive-reader__close {
+    position: absolute;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 2;
+    padding: 0.4rem 0.65rem;
+    border: 1px solid var(--theme-border, #888);
+    border-radius: 0.4rem;
+    background: var(--theme-bg-main, #ffffff);
+    color: inherit;
+    cursor: pointer;
 }
 
 .immersive-reader__scroll {
@@ -292,7 +356,7 @@ onUnmounted(() => {
 .immersive-reader__verse {
     margin: 0 0 1.25rem;
     color: var(--theme-text, #252525);
-    font-size: clamp(1.08rem, 1.6vw, 1.32rem);
+    font-size: var(--reader-font-size, 18px);
     line-height: 1.9;
 }
 
@@ -348,7 +412,7 @@ onUnmounted(() => {
 }
 
 .immersive-reader__shortcut--exit {
-    top: 1.25rem;
+    top: 3.5rem;
     left: 1.25rem;
 }
 
@@ -441,7 +505,7 @@ onUnmounted(() => {
     }
 
     .immersive-reader__shortcut--exit {
-        top: 0.75rem;
+        top: 3.5rem;
         left: 0.75rem;
     }
 
@@ -494,7 +558,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 380px) {
-    .immersive-reader__shortcut--exit,
     .immersive-reader__shortcut--font {
         top: 0.5rem;
     }

@@ -21,12 +21,15 @@ export function renderNIcon(icon: any, size?: number|null) {
  * are stripped too. Mirrors getCleanVerseTextForCopy in ViewVerses, which is how
  * the reader pane keeps the same markup out of the on-screen text.
  */
-export function stripVerseHtml(html: string): string {
+export function stripVerseHtml(html: string, preserveLineBreaks = false): string {
     const tpl = document.createElement('template');
-    tpl.innerHTML = html ?? '';
+    // MyBible uses a self-closing pb tag. HTML treats unknown elements as
+    // containers, so normalize it before parsing to retain the text after it.
+    tpl.innerHTML = (html ?? '').replace(/<pb\b[^>]*>/gi, '<br>').replace(/<\/pb\s*>/gi, '');
     tpl.content.querySelectorAll('a, s, f').forEach((el) => el.remove());
-    return (tpl.content.textContent ?? '')
-        .replace(/\[\d+\]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+    tpl.content.querySelectorAll('br').forEach((el) => el.replaceWith('\n'));
+    const text = (tpl.content.textContent ?? '').replace(/\[\d+\]/g, '');
+    return preserveLineBreaks
+        ? text.replace(/[^\S\n]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+        : text.replace(/\s+/g, ' ').trim();
 }

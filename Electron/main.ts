@@ -67,8 +67,8 @@ async function createWindow() {
         y: windowState.y,
         width: windowState.width,
         height: windowState.height,
-        minWidth: 1226,
-        minHeight: 700,
+        minWidth: Math.min(1226, windowState.width),
+        minHeight: Math.min(700, windowState.height),
         icon: iconPath,
         webPreferences: {
             preload: __dirname + '/preload.js',

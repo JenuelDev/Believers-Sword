@@ -1,4 +1,4 @@
 ## Updates
-- Bug Fix
-- UI Bug Fixes
-- Added grow content
+- Fixed Web Version To Able to Open games
+- Fixed Bugs
+- UX improvement on Reading Page

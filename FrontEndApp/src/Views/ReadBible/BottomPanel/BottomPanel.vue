@@ -223,7 +223,7 @@ function changePaneSizes(sizes: Array<any>) {
                                     :key="noteItem.id"
                                     class="group note-item rounded-md border p-2 cursor-pointer transition-all duration-200 ease-out"
                                     :class="{
-                                        'note-item-selected bg-[var(--primary-color)]/20 border-[var(--primary-color)] shadow-md':
+                                        'note-item-selected border-[var(--primary-color)] shadow-md':
                                             noteStore.selectedNoteId === noteItem.id,
                                         'note-item-unselected':
                                             noteStore.selectedNoteId !== noteItem.id,
@@ -274,6 +274,10 @@ function changePaneSizes(sizes: Array<any>) {
                         >
                             <Editor ref="EditorRef" v-model="noteStore.currentNoteContent" overflow>
                                 <template #toolbar-end>
+                                    <span v-if="noteStore.saveError" role="status" class="flex flex-wrap items-center gap-2 text-xs text-red-600 dark:text-red-300">
+                                        <span>{{ noteStore.saveError }}</span>
+                                        <NButton size="tiny" @click="noteStore.retryPendingSaves()">Retry saving</NButton>
+                                    </span>
                                     <NDropdown
                                         trigger="click"
                                         placement="bottom-end"
@@ -342,6 +346,11 @@ function changePaneSizes(sizes: Array<any>) {
 </template>
 
 <style scoped>
+.note-item-selected {
+    background-color: color-mix(in srgb, var(--primary-color) 20%, transparent);
+    color: var(--theme-text);
+}
+
 :deep(.take-note-split .splitpanes__splitter) {
     min-width: 10px;
     background: transparent;

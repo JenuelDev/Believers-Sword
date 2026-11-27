@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { NIcon, NPopover, useMessage } from 'naive-ui';
 import { BookmarkFilled } from '@vicons/carbon';
-import { Icon } from '@iconify/vue';
 import { onClickOutside } from '@vueuse/core';
 import { ref, computed, nextTick, watch, type PropType } from 'vue';
 import { ContextMenuOptions, ClearHighlightOption } from './ContextMenuOptions';
@@ -236,7 +235,6 @@ onClickOutside(contextMenuRef, (event) => {
                     <span class="cm-action__label">
                         {{ option.key === 'add-to-bookmark' && isBookmarked ? 'Unbookmark' : $t(option.label) }}
                     </span>
-                    <Icon icon="lucide:chevron-right" class="cm-action__chev" />
                 </div>
                 <!-- Color picker drops in directly under Highlight Verse. -->
                 <div
@@ -273,7 +271,6 @@ onClickOutside(contextMenuRef, (event) => {
                         {{ ClearHighlightOption.description }}
                     </span>
                 </div>
-                <Icon icon="lucide:chevron-right" class="cm-action__chev" />
             </div>
             </template>
         </div>
@@ -305,7 +302,7 @@ onClickOutside(contextMenuRef, (event) => {
     opacity: 0.5;
 }
 
-/* Primary action row — tinted icon tile, label, trailing chevron. */
+/* Primary action row with a tinted icon tile and label. */
 .cm-action {
     display: flex;
     align-items: center;
@@ -331,11 +328,6 @@ onClickOutside(contextMenuRef, (event) => {
     font-size: 14px;
     font-weight: 600;
     white-space: nowrap;
-}
-.cm-action__chev {
-    flex-shrink: 0;
-    font-size: 15px;
-    opacity: 0.35;
 }
 .cm-action--danger:hover {
     background: rgba(239, 68, 68, 0.12);
