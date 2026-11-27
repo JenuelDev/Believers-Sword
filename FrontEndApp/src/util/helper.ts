@@ -23,10 +23,12 @@ export function renderNIcon(icon: any, size?: number|null) {
  */
 export function stripVerseHtml(html: string): string {
     const tpl = document.createElement('template');
-    tpl.innerHTML = html ?? '';
+    // Normalize MyBible's self-closing paragraph markers before HTML parsing.
+    tpl.innerHTML = (html ?? '').replace(/<pb\b[^>]*>/gi, '<br>').replace(/<\/pb\s*>/gi, '');
     tpl.content.querySelectorAll('a, s, f').forEach((el) => el.remove());
+    tpl.content.querySelectorAll('br').forEach((el) => el.replaceWith(' '));
     return (tpl.content.textContent ?? '')
-        .replace(/\[\d+\]/g, '')
+        .replace(/\[[†?]?\d+(?:-\d+)?\]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
 }

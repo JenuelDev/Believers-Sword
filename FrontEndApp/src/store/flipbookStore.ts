@@ -7,6 +7,9 @@ import { usePiperTTSStore } from './piperTTSStore';
 import { useSettingStore } from './settingStore';
 import { bibleBooks } from '../util/books';
 import SESSION from '../util/session';
+import { stripVerseHtml as stripHtml } from '../util/helper';
+import { useModuleStore } from './moduleStore';
+import { bibleVersionDisplayName } from '../util/bibleVersions';
 
 const STORAGE_KEY_VERSION = 'flipbook-selected-version';
 const STORAGE_KEY_FONT_SIZE = 'flipbook-font-size';
@@ -14,6 +17,7 @@ const STORAGE_KEY_PAGES = 'flipbook-page-positions';
 
 export const useFlipbookStore = defineStore('useFlipbookStore', () => {
     const bibleStore = useBibleStore();
+    const moduleStore = useModuleStore();
 
     const isOpen = ref(false);
     const showVersionSelect = ref(false);
@@ -77,9 +81,11 @@ export const useFlipbookStore = defineStore('useFlipbookStore', () => {
         return verses.value.slice(start, start + versesPerPage.value);
     });
 
-    const versionDisplayName = computed(() => {
-        return selectedVersion.value.replace('.SQLite3', '');
-    });
+    function versionTitle(fileName: string) {
+        return bibleVersionDisplayName(fileName, moduleStore.bibleLists);
+    }
+
+    const versionDisplayName = computed(() => versionTitle(selectedVersion.value));
 
     function openVersionSelect() {
         // If a version was previously saved, open directly with it
@@ -196,14 +202,6 @@ export const useFlipbookStore = defineStore('useFlipbookStore', () => {
         return `${title}\n\n${lines.join('\n\n')}`;
     }
 
-    function stripHtml(html: string): string {
-        const div = document.createElement('div');
-        div.innerHTML = html;
-        div.querySelectorAll('f, s').forEach((el) => el.remove());
-        const text = div.textContent || div.innerText || '';
-        return text.replace(/\[†?\d+(?:-\d+)?\]/g, '').replace(/\s+/g, ' ').trim();
-    }
-
     function downloadAsTxt() {
         const text = getPlainText();
         const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -272,6 +270,7 @@ export const useFlipbookStore = defineStore('useFlipbookStore', () => {
         totalPages,
         currentPageVerses,
         versionDisplayName,
+        versionTitle,
         openVersionSelect,
         changeVersion,
         openFlipbook,

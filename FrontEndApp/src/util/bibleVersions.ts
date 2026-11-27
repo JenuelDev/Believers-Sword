@@ -18,6 +18,17 @@ export const REPLACED_BIBLE_VERSIONS: Record<string, string> = {
     'King James Version - 1769.SQLite3': 'bs_KJV - 1769.SQLite3',
 };
 
+/** Prefer the module's published title, with a readable filename fallback. */
+export function bibleVersionDisplayName(
+    fileName: string,
+    modules: readonly { file_name: string; title?: string | null }[],
+): string {
+    const title = modules.find(module => module.file_name === fileName)?.title?.trim();
+    const name = (title || fileName).replace(/\.(sqlite3|db)$/i, '')
+        .replace(/^bs_/, '').replace(/_/g, ' ').trim();
+    return name === name.toLowerCase() ? name.replace(/\b[a-z]/g, letter => letter.toUpperCase()) : name;
+}
+
 /** Successor -> the module it replaced, used as a substitute when it's missing. */
 const PREDECESSOR_BIBLE_VERSIONS: Record<string, string> = Object.fromEntries(
     Object.entries(REPLACED_BIBLE_VERSIONS).map(([oldName, newName]) => [newName, oldName]),

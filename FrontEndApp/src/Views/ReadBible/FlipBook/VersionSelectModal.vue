@@ -36,7 +36,7 @@ function selectVersion(fileName: string) {
                         <template #icon>
                             <Icon icon="mdi:book-open-page-variant" style="font-size: 18px;" />
                         </template>
-                        {{ bible.title }}
+                        {{ flipbookStore.versionTitle(bible.file_name) }}
                     </NButton>
                 </div>
             </NScrollbar>

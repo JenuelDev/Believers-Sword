@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
+import { ref, shallowRef, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
 import { NButton, NIcon, NInputNumber, NDropdown, NSlider, NSpin, NScrollbar, NModal, NCard, NInput } from 'naive-ui';
 import { Icon } from '@iconify/vue';
 import { useFlipbookStore } from '../../../store/flipbookStore';
@@ -7,6 +7,7 @@ import { useSettingStore } from '../../../store/settingStore';
 import { useTTSStore } from '../../../store/ttsStore';
 import { usePiperTTSStore } from '../../../store/piperTTSStore';
 import { bibleBooks, type BookInfo } from '../../../util/books';
+import { stripVerseHtml as stripHtml } from '../../../util/helper';
 
 const flipbookStore = useFlipbookStore();
 const settingStore = useSettingStore();
@@ -48,7 +49,38 @@ function openBookPicker() {
 }
 const flipDirection = ref<'next' | 'prev' | ''>('');
 const isFlipping = ref(false);
+const turnStarted = ref(false);
+const turningPageHtml = ref('');
+const outgoingPageHtml = ref('');
+const pageContentRef = shallowRef<HTMLElement | null>(null);
+let flipTimeout: ReturnType<typeof setTimeout> | null = null;
+let flipGeneration = 0;
 const scrollbarRef = ref<InstanceType<typeof NScrollbar> | null>(null);
+
+function capturePage() {
+    const content = pageContentRef.value;
+    if (!content) return '';
+    const offset = content.getBoundingClientRect().top - content.closest('.flipbook-page')!.getBoundingClientRect().top;
+    const snapshot = content.cloneNode(true) as HTMLElement;
+    snapshot.style.transform = `translateY(${Math.min(0, offset)}px)`;
+    snapshot.querySelectorAll('button').forEach(button => button.setAttribute('tabindex', '-1'));
+    return snapshot.outerHTML;
+}
+
+function finishFlip() {
+    if (flipTimeout) clearTimeout(flipTimeout);
+    flipTimeout = null;
+    flipGeneration++;
+    isFlipping.value = false;
+    turnStarted.value = false;
+    flipDirection.value = '';
+    turningPageHtml.value = '';
+    outgoingPageHtml.value = '';
+}
+
+function handleTurnEnd(event: AnimationEvent) {
+    if (event.target === event.currentTarget) finishFlip();
+}
 
 // ── Self-contained TTS (reads from flipbook verses) ──
 const ttsActiveVerse = ref<number | null>(null);
@@ -60,14 +92,6 @@ let ttsPlayTimeout: ReturnType<typeof setTimeout> | null = null;
 let keepAliveInterval: ReturnType<typeof setInterval> | null = null;
 let piperAudioContext: AudioContext | null = null;
 let piperCurrentSource: AudioBufferSourceNode | null = null;
-
-function stripHtml(html: string): string {
-    const tmp = document.createElement('div');
-    tmp.innerHTML = html;
-    tmp.querySelectorAll('f, s').forEach((el) => el.remove());
-    const text = tmp.textContent || tmp.innerText || '';
-    return text.replace(/\[†?\d+(?:-\d+)?\]/g, '').replace(/\s+/g, ' ').trim();
-}
 
 function startKeepAlive() {
     if (keepAliveInterval) return;
@@ -201,30 +225,33 @@ function stopTTS() {
     ttsCurrentIndex = -1;
 }
 
-function handleNextPage() {
-    if (isFlipping.value || flipbookStore.currentPage >= flipbookStore.totalPages - 1) return;
-    flipDirection.value = 'next';
+async function turnPage(direction: 'next' | 'prev') {
+    if (isFlipping.value || !flipbookStore.isOpen) return;
+    if (direction === 'next' ? flipbookStore.currentPage >= flipbookStore.totalPages - 1 : flipbookStore.currentPage <= 0) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        direction === 'next' ? flipbookStore.nextPage() : flipbookStore.prevPage();
+        return;
+    }
+    const generation = ++flipGeneration;
+    outgoingPageHtml.value = capturePage();
+    turningPageHtml.value = outgoingPageHtml.value;
+    flipDirection.value = direction;
     isFlipping.value = true;
-    setTimeout(() => {
-        flipbookStore.nextPage();
-        isFlipping.value = false;
-        flipDirection.value = '';
-    }, 400);
+    direction === 'next' ? flipbookStore.nextPage() : flipbookStore.prevPage();
+    await nextTick();
+    if (generation !== flipGeneration) return;
+    if (direction === 'prev') turningPageHtml.value = capturePage();
+    turnStarted.value = true;
+    // Animation end is authoritative; the timeout covers suspended renderers.
+    flipTimeout = setTimeout(finishFlip, 900);
 }
 
-function handlePrevPage() {
-    if (isFlipping.value || flipbookStore.currentPage <= 0) return;
-    flipDirection.value = 'prev';
-    isFlipping.value = true;
-    setTimeout(() => {
-        flipbookStore.prevPage();
-        isFlipping.value = false;
-        flipDirection.value = '';
-    }, 400);
-}
+function handleNextPage() { void turnPage('next'); }
+function handlePrevPage() { void turnPage('prev'); }
 
 function handleGoToVerse() {
     if (goToVerseNumber.value) {
+        finishFlip();
         flipbookStore.goToVerse(goToVerseNumber.value);
         showGoToInput.value = false;
         goToVerseNumber.value = null;
@@ -259,6 +286,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    finishFlip();
     document.removeEventListener('keydown', handleKeydown);
     stopTTS();
 });
@@ -266,6 +294,7 @@ onUnmounted(() => {
 // Stop all TTS when flipbook closes
 watch(() => flipbookStore.isOpen, (open) => {
     if (!open) {
+        finishFlip();
         stopTTS();
         mainTtsStore.stop();
         mainPiperStore.stop();
@@ -284,11 +313,11 @@ watch(ttsActiveVerse, (verseNum) => {
 });
 
 // Auto-scroll to top of page when page changes
+watch(() => [flipbookStore.activeBookNumber, flipbookStore.activeChapter, flipbookStore.selectedVersion], finishFlip);
+
 watch(() => flipbookStore.currentPage, () => {
-    nextTick(() => {
-        scrollbarRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-});
+    scrollbarRef.value?.scrollTo({ top: 0, behavior: 'auto' });
+}, { flush: 'post' });
 </script>
 <template>
     <Teleport to="body">
@@ -355,59 +384,79 @@ watch(() => flipbookStore.currentPage, () => {
 
                     <!-- Page -->
                     <div class="flipbook-page-container">
-                        <div
-                            class="flipbook-page"
-                            :class="{
-                                'flip-next': flipDirection === 'next',
-                                'flip-prev': flipDirection === 'prev',
-                            }"
-                        >
-                            <NScrollbar ref="scrollbarRef">
-                                <div class="flipbook-page-inner">
-                                    <div v-if="flipbookStore.currentPage === 0" class="flipbook-heading">
-                                        <h1>{{ flipbookStore.bookTitle }} <span>{{ flipbookStore.chapterNumber }}</span></h1>
-                                    </div>
+                        <div class="flipbook-book" :class="{ 'is-turning': isFlipping }">
+                            <div class="flipbook-page">
+                                <NScrollbar ref="scrollbarRef">
+                                    <div ref="pageContentRef" class="flipbook-page-inner">
+                                        <div v-if="flipbookStore.currentPage === 0" class="flipbook-heading">
+                                            <h1>{{ flipbookStore.bookTitle }} <span>{{ flipbookStore.chapterNumber }}</span></h1>
+                                        </div>
 
-                                    <!-- No verses loaded for this version/chapter -->
-                                    <div v-if="flipbookStore.verses.length === 0" class="flipbook-empty">
-                                        <Icon icon="mdi:book-alert-outline" class="flipbook-empty-icon" />
-                                        <p class="flipbook-empty-title">
-                                            {{ flipbookStore.loadError ? "Couldn't open this version" : 'No verses found here' }}
-                                        </p>
-                                        <p class="flipbook-empty-desc">
-                                            This Bible version may not be fully downloaded, or doesn’t include
-                                            {{ flipbookStore.bookTitle }} {{ flipbookStore.chapterNumber }}. Try a different version.
-                                        </p>
-                                        <NButton size="small" secondary @click="flipbookStore.changeVersion()">
-                                            <template #icon><Icon icon="mdi:book-open-page-variant" /></template>
-                                            Choose another version
-                                        </NButton>
-                                    </div>
+                                        <!-- No verses loaded for this version/chapter -->
+                                        <div v-if="flipbookStore.verses.length === 0" class="flipbook-empty">
+                                            <Icon icon="mdi:book-alert-outline" class="flipbook-empty-icon" />
+                                            <p class="flipbook-empty-title">
+                                                {{ flipbookStore.loadError ? "Couldn't open this version" : 'No verses found here' }}
+                                            </p>
+                                            <p class="flipbook-empty-desc">
+                                                This Bible version may not be fully downloaded, or doesn’t include
+                                                {{ flipbookStore.bookTitle }} {{ flipbookStore.chapterNumber }}. Try a different version.
+                                            </p>
+                                            <NButton size="small" secondary @click="flipbookStore.changeVersion()">
+                                                <template #icon><Icon icon="mdi:book-open-page-variant" /></template>
+                                                Choose another version
+                                            </NButton>
+                                        </div>
 
-                                    <div
-                                        v-for="verse in flipbookStore.currentPageVerses"
-                                        :key="verse.verse"
-                                        class="flipbook-verse group"
-                                    >
-                                        <button
-                                            class="flipbook-play-btn"
-                                            :class="{ active: ttsActiveVerse === verse.verse }"
-                                            :title="ttsActiveVerse === verse.verse ? 'Playing...' : 'Play from this verse'"
-                                            @click="playVerse(verse.verse)"
+                                        <div
+                                            v-for="verse in flipbookStore.currentPageVerses"
+                                            :key="verse.verse"
+                                            class="flipbook-verse group"
                                         >
-                                            <Icon
-                                                :icon="ttsActiveVerse === verse.verse ? 'mdi:account-voice' : 'mdi:play'"
-                                                style="font-size: 15px;"
-                                                :class="{ 'animate-pulse': ttsActiveVerse === verse.verse }"
-                                            />
-                                        </button>
-                                        <div class="flipbook-verse-text" :style="{ fontSize: flipbookStore.fontSize + 'px' }">
-                                            <span class="verse-num">{{ verse.verse }}.</span>
-                                            <span v-html="verse.text"></span>
+                                            <button
+                                                class="flipbook-play-btn"
+                                                :class="{ active: ttsActiveVerse === verse.verse }"
+                                                :title="ttsActiveVerse === verse.verse ? 'Playing...' : 'Play from this verse'"
+                                                @click="playVerse(verse.verse)"
+                                            >
+                                                <Icon
+                                                    :icon="ttsActiveVerse === verse.verse ? 'mdi:account-voice' : 'mdi:play'"
+                                                    style="font-size: 15px;"
+                                                    :class="{ 'animate-pulse': ttsActiveVerse === verse.verse }"
+                                                />
+                                            </button>
+                                            <div class="flipbook-verse-text" :style="{ fontSize: flipbookStore.fontSize + 'px' }">
+                                                <span class="verse-num">{{ verse.verse }}.</span>
+                                                <span>{{ stripHtml(verse.text) }}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            </NScrollbar>
+                                </NScrollbar>
+                            </div>
+                            <div
+                                v-if="isFlipping && flipDirection === 'prev'"
+                                class="flipbook-page-underlay"
+                                aria-hidden="true"
+                                inert
+                                v-html="outgoingPageHtml"
+                            ></div>
+                            <div
+                                v-if="turnStarted"
+                                class="flipbook-turn-shadow"
+                                :class="`turn-${flipDirection}`"
+                                aria-hidden="true"
+                            ></div>
+                            <div
+                                v-if="turnStarted"
+                                class="flipbook-turn-sheet"
+                                :class="`turn-${flipDirection}`"
+                                aria-hidden="true"
+                                inert
+                                @animationend="handleTurnEnd"
+                            >
+                                <div class="flipbook-sheet-front" v-html="turningPageHtml"></div>
+                                <div class="flipbook-sheet-back"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -581,6 +630,7 @@ watch(() => flipbookStore.currentPage, () => {
     display: flex;
     align-items: stretch;
     min-height: 0;
+    overflow: hidden;
     gap: 0;
 }
 
@@ -615,11 +665,22 @@ watch(() => flipbookStore.currentPage, () => {
     padding: 12px 0;
 }
 
+.flipbook-book {
+    position: relative;
+    width: 100%;
+    max-width: 780px;
+    min-width: 0;
+    perspective: 2200px;
+    perspective-origin: 35% 50%;
+    isolation: isolate;
+
+    &.is-turning { pointer-events: none; }
+}
+
 /* ── the page itself ── */
 .flipbook-page {
     width: 100%;
-    max-width: 780px;
-    max-height: 100%;
+    height: 100%;
     overflow: hidden;
     background: #fefcf7;
     color: #2c2c2c;
@@ -627,26 +688,99 @@ watch(() => flipbookStore.currentPage, () => {
     box-shadow:
         0 1px 3px rgba(0, 0, 0, 0.5),
         0 8px 30px rgba(0, 0, 0, 0.4);
-    transform-origin: center center;
-    transition: transform 0.4s ease, opacity 0.4s ease;
+}
 
-    &.flip-next { animation: flipNext 0.4s ease; }
-    &.flip-prev { animation: flipPrev 0.4s ease; }
+.flipbook-page-underlay,
+.flipbook-sheet-front,
+.flipbook-sheet-back {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border-radius: 3px;
+    background: #fefcf7;
+    color: #2c2c2c;
+}
+
+.flipbook-page-underlay { z-index: 1; }
+
+.flipbook-turn-sheet {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    transform-origin: left center;
+    transform-style: preserve-3d;
+    pointer-events: none;
+    will-change: transform;
+    animation-duration: 720ms;
+    animation-timing-function: cubic-bezier(0.4, 0.08, 0.25, 1);
+    animation-fill-mode: both;
+
+    &.turn-next { animation-name: turnSheetForward; }
+    &.turn-prev { animation-name: turnSheetBackward; }
+}
+
+.flipbook-sheet-front,
+.flipbook-sheet-back {
+    backface-visibility: hidden;
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.12), 12px 10px 28px rgba(0, 0, 0, 0.2);
+}
+
+.flipbook-sheet-front {
+    transform: translateZ(0.5px);
+
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, rgba(90, 72, 45, 0.3), transparent 12%, rgba(255, 255, 255, 0.3) 65%, rgba(75, 58, 35, 0.12));
+        animation: paperLight 720ms ease-in-out both;
+    }
+}
+
+.flipbook-sheet-back {
+    transform: rotateY(180deg) translateZ(0.5px);
+    background: linear-gradient(90deg, #eee9dc, #fefcf7 18%, #faf6ec 80%, #d9d1c0);
+}
+
+.flipbook-turn-shadow {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgba(35, 25, 10, 0.32), rgba(35, 25, 10, 0.08) 45%, transparent);
+    animation: pageShadow 720ms ease-in-out both;
 }
 
 .flipbook-page-inner {
     padding: 36px 52px;
 }
 
-@keyframes flipNext {
-    0%   { transform: perspective(1200px) rotateY(0deg);  opacity: 1;   }
-    50%  { transform: perspective(1200px) rotateY(-5deg);  opacity: 0.75; }
-    100% { transform: perspective(1200px) rotateY(0deg);  opacity: 1;   }
+@keyframes turnSheetForward {
+    0% { transform: rotateY(0deg); }
+    45% { transform: rotateY(-82deg); }
+    100% { transform: rotateY(-180deg); }
 }
-@keyframes flipPrev {
-    0%   { transform: perspective(1200px) rotateY(0deg);  opacity: 1;   }
-    50%  { transform: perspective(1200px) rotateY(5deg);   opacity: 0.75; }
-    100% { transform: perspective(1200px) rotateY(0deg);  opacity: 1;   }
+
+@keyframes turnSheetBackward {
+    0% { transform: rotateY(-180deg); }
+    55% { transform: rotateY(-82deg); }
+    100% { transform: rotateY(0deg); }
+}
+
+@keyframes paperLight {
+    0%, 100% { opacity: 0.05; }
+    45%, 65% { opacity: 0.8; }
+}
+
+@keyframes pageShadow {
+    0%, 100% { opacity: 0; }
+    45% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .flipbook-turn-sheet,
+    .flipbook-turn-shadow,
+    .flipbook-sheet-front::after { animation-duration: 1ms; }
 }
 
 /* ── chapter heading ── */
